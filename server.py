@@ -104,8 +104,30 @@ def send_simple_reply(client_socket, error, handle):
     client_socket.sendall(reply)
 
 
+class InMemoryStorage:
+    def __init__(self):
+        self.data = {}
+
+    def read(self, offset, length):
+        result = b''
+        for i in range(length):
+            byte_offset = offset + i
+            if byte_offset in self.data:
+                result += self.data[byte_offset]
+            else:
+                result += b'\x00'
+        return result
+
+    def write(self, offset, data):
+        for i in range(len(data)):
+            self.data[offset + i] = data[i:i+1]
+
+    def flush(self):
+        pass
+
+
 def main():
-    storage = {}
+    storage = InMemoryStorage()
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -141,13 +163,7 @@ def main():
                         print(f"  Command: type={cmd_type}, offset={offset}, length={length}")
 
                         if cmd_type == NBD_CMD_READ:
-                            data_to_send = b''
-                            for i in range(length):
-                                byte_offset = offset + i
-                                if byte_offset in storage:
-                                    data_to_send += storage[byte_offset]
-                                else:
-                                    data_to_send += b'\x00'
+                            data_to_send = storage.read(offset, length)
 
                             send_simple_reply(client_socket, 0, handle)
                             client_socket.sendall(data_to_send)
@@ -155,12 +171,16 @@ def main():
 
                         elif cmd_type == NBD_CMD_WRITE:
                             write_data = recv_exactly(client_socket, length)
-
-                            for i in range(length):
-                                storage[offset + i] = write_data[i:i+1]
+                            storage.write(offset, write_data)
 
                             send_simple_reply(client_socket, 0, handle)
                             print(f"  Processed WRITE: {length} bytes at offset {offset}")
+
+                        elif cmd_type == NBD_CMD_FLUSH:
+                            storage.flush()
+
+                            send_simple_reply(client_socket, 0, handle)
+                            print(f"  Processed FLUSH")
 
                         elif cmd_type == NBD_CMD_DISC:
                             print("  Client requested disconnect")
