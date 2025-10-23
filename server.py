@@ -20,6 +20,14 @@ NBD_FLAG_HAS_FLAGS = 0x0001
 NBD_FLAG_SEND_FLUSH = 0x0002
 TRANSMISSION_FLAGS = NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH
 
+NBD_CMD_READ = 0
+NBD_CMD_WRITE = 1
+NBD_CMD_DISC = 2
+NBD_CMD_FLUSH = 3
+
+NBD_SIMPLE_REPLY_MAGIC = 0x67446698
+NBD_REQUEST_MAGIC = 0x25609513
+
 EXPORT_SIZE = 1024 * 1024 * 1024
 
 HOST = 'localhost'
@@ -81,7 +89,23 @@ def send_ack_reply(client_socket, option):
     print(f"  Sent NBD_REP_ACK for option 0x{option:08x}")
 
 
+def parse_command(client_socket):
+    header = recv_exactly(client_socket, 28)
+    magic, flags, cmd_type, handle, offset, length = struct.unpack('>IHHQQL', header)
+
+    if magic != NBD_REQUEST_MAGIC:
+        raise ValueError(f"Invalid request magic: 0x{magic:08x}")
+
+    return cmd_type, flags, handle, offset, length
+
+
+def send_simple_reply(client_socket, error, handle):
+    reply = struct.pack('>IIQ', NBD_SIMPLE_REPLY_MAGIC, error, handle)
+    client_socket.sendall(reply)
+
+
 def main():
+    storage = {}
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -111,7 +135,27 @@ def main():
                     send_info_reply(client_socket, option, EXPORT_SIZE)
                     send_ack_reply(client_socket, option)
                     print("  Negotiation complete, entering transmission phase")
-                    print("  Waiting for commands (not implemented yet)...")
+
+                    while True:
+                        cmd_type, flags, handle, offset, length = parse_command(client_socket)
+                        print(f"  Command: type={cmd_type}, offset={offset}, length={length}")
+
+                        if cmd_type == NBD_CMD_READ:
+                            data_to_send = storage.get(offset, b'\x00' * length)
+                            if len(data_to_send) < length:
+                                data_to_send += b'\x00' * (length - len(data_to_send))
+
+                            send_simple_reply(client_socket, 0, handle)
+                            client_socket.sendall(data_to_send)
+                            print(f"  Sent READ reply: {length} bytes")
+
+                        elif cmd_type == NBD_CMD_DISC:
+                            print("  Client requested disconnect")
+                            break
+
+                        else:
+                            print(f"  Unsupported command: {cmd_type}")
+                            send_simple_reply(client_socket, 1, handle)
 
                 elif option == NBD_OPT_ABORT:
                     print("  Client requested abort")
