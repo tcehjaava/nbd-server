@@ -175,6 +175,11 @@ Start with the simplest working implementation, then incrementally improve. No a
 - Understand real complexity before abstracting
 - Make informed decisions based on working code
 
+### ✅ Self-Documenting Code
+- No comments in code - code is readable by itself
+- Use clear variable names, function names, and structure
+- Let the code speak for itself
+
 ## Timeline Estimate
 
 | Phase | Time | Cumulative |

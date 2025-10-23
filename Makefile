@@ -1,4 +1,4 @@
-.PHONY: help install install-dev format lint type-check test test-cov clean docker-up docker-down run
+.PHONY: help install install-dev format lint type-check test test-cov clean docker-up docker-down run stop
 
 help:
 	@echo "Available commands:"
@@ -12,7 +12,8 @@ help:
 	@echo "  make clean          - Remove build artifacts and cache"
 	@echo "  make docker-up      - Start MinIO with docker-compose"
 	@echo "  make docker-down    - Stop docker-compose services"
-	@echo "  make run            - Run NBD server (requires MinIO running)"
+	@echo "  make run            - Run NBD server"
+	@echo "  make stop           - Stop running NBD server"
 
 install:
 	pip install -r requirements.txt
@@ -57,4 +58,12 @@ docker-down:
 	docker-compose down
 
 run:
-	python -m nbd_server.server
+	python3 server.py
+
+stop:
+	@PID=$$(lsof -t -i :10809 2>/dev/null); \
+	if [ -n "$$PID" ]; then \
+		kill $$PID && echo "NBD server stopped (PID $$PID)"; \
+	else \
+		echo "No NBD server running on port 10809"; \
+	fi
