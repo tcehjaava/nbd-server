@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
 
-"""
-NBD Server Entry Point.
-
-Simple entry point script to run the NBD server with in-memory storage.
-"""
-
 import logging
 
 from src.nbd_server import NBDServer, InMemoryStorage
