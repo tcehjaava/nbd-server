@@ -141,13 +141,26 @@ def main():
                         print(f"  Command: type={cmd_type}, offset={offset}, length={length}")
 
                         if cmd_type == NBD_CMD_READ:
-                            data_to_send = storage.get(offset, b'\x00' * length)
-                            if len(data_to_send) < length:
-                                data_to_send += b'\x00' * (length - len(data_to_send))
+                            data_to_send = b''
+                            for i in range(length):
+                                byte_offset = offset + i
+                                if byte_offset in storage:
+                                    data_to_send += storage[byte_offset]
+                                else:
+                                    data_to_send += b'\x00'
 
                             send_simple_reply(client_socket, 0, handle)
                             client_socket.sendall(data_to_send)
                             print(f"  Sent READ reply: {length} bytes")
+
+                        elif cmd_type == NBD_CMD_WRITE:
+                            write_data = recv_exactly(client_socket, length)
+
+                            for i in range(length):
+                                storage[offset + i] = write_data[i:i+1]
+
+                            send_simple_reply(client_socket, 0, handle)
+                            print(f"  Processed WRITE: {length} bytes at offset {offset}")
 
                         elif cmd_type == NBD_CMD_DISC:
                             print("  Client requested disconnect")
