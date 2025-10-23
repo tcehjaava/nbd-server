@@ -7,6 +7,12 @@ NBDMAGIC = 0x4e42444d41474943
 IHAVEOPT = 0x49484156454f5054
 NBD_FLAG_FIXED_NEWSTYLE = 0x0001
 
+NBD_OPT_ABORT = 0x00000002
+NBD_OPT_GO = 0x00000007
+
+NBD_REP_MAGIC = 0x3e889045565a9
+NBD_REP_ACK = 0x00000001
+
 HOST = 'localhost'
 PORT = 10809
 
@@ -15,6 +21,44 @@ def send_handshake(client_socket):
     handshake = struct.pack('>QQH', NBDMAGIC, IHAVEOPT, NBD_FLAG_FIXED_NEWSTYLE)
     client_socket.sendall(handshake)
     print(f"  Sent handshake: {len(handshake)} bytes")
+
+
+def recv_exactly(client_socket, num_bytes):
+    data = b''
+    while len(data) < num_bytes:
+        chunk = client_socket.recv(num_bytes - len(data))
+        if not chunk:
+            raise ConnectionError("Connection closed while receiving data")
+        data += chunk
+    return data
+
+
+def parse_client_flags(client_socket):
+    flags_data = recv_exactly(client_socket, 4)
+    flags = struct.unpack('>I', flags_data)[0]
+    print(f"  Received client flags: 0x{flags:08x}")
+    return flags
+
+
+def parse_option_request(client_socket):
+    header = recv_exactly(client_socket, 16)
+    magic, option, length = struct.unpack('>QII', header)
+
+    if magic != IHAVEOPT:
+        raise ValueError(f"Invalid option magic: 0x{magic:016x}")
+
+    data = b''
+    if length > 0:
+        data = recv_exactly(client_socket, length)
+
+    print(f"  Received option: 0x{option:08x}, length: {length}")
+    return option, data
+
+
+def send_ack_reply(client_socket, option):
+    reply = struct.pack('>QIII', NBD_REP_MAGIC, option, NBD_REP_ACK, 0)
+    client_socket.sendall(reply)
+    print(f"  Sent NBD_REP_ACK for option 0x{option:08x}")
 
 
 def main():
@@ -34,10 +78,26 @@ def main():
 
             try:
                 send_handshake(client_socket)
-                print("  Handshake complete, closing connection")
+
+                parse_client_flags(client_socket)
+
+                option, data = parse_option_request(client_socket)
+
+                if option == NBD_OPT_GO:
+                    export_name_length = struct.unpack('>I', data[:4])[0]
+                    export_name = data[4:4+export_name_length].decode('utf-8')
+                    print(f"  Export name: '{export_name}'")
+
+                    send_ack_reply(client_socket, option)
+                    print("  Option negotiation complete")
+
+                elif option == NBD_OPT_ABORT:
+                    print("  Client requested abort")
+                else:
+                    print(f"  Unsupported option: 0x{option:08x}")
 
             except Exception as e:
-                print(f"  Error during handshake: {e}")
+                print(f"  Error: {e}")
 
             finally:
                 client_socket.close()
