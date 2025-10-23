@@ -4,7 +4,7 @@ Network Block Device (NBD) server implementation with S3-compatible storage back
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.13+
 - Docker and Docker Compose (for MinIO)
 - Linux system with NBD kernel module (or Docker container on macOS)
 
