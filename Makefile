@@ -60,7 +60,7 @@ docker-down:
 	docker-compose down
 
 run:
-	python3 server.py
+	python3 main.py
 
 stop:
 	@PID=$$(lsof -t -i :10809 2>/dev/null); \

@@ -1,21 +1,20 @@
 import logging
 import socket
 import struct
-from typing import Optional
 
 from .constants import (
+    DEFAULT_EXPORT_SIZE,
     DEFAULT_HOST,
     DEFAULT_PORT,
-    DEFAULT_EXPORT_SIZE,
-    TRANSMISSION_FLAGS,
-    NBD_OPT_ABORT,
-    NBD_OPT_GO,
+    NBD_CMD_DISC,
+    NBD_CMD_FLUSH,
     NBD_CMD_READ,
     NBD_CMD_WRITE,
-    NBD_CMD_FLUSH,
-    NBD_CMD_DISC,
+    NBD_OPT_ABORT,
+    NBD_OPT_GO,
+    TRANSMISSION_FLAGS,
 )
-from .protocol import Responses, Requests, recv_exactly
+from .protocol import Requests, Responses, recv_exactly
 from .storage import StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ class NBDServer:
         storage: StorageBackend,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
-        export_size: int = DEFAULT_EXPORT_SIZE
+        export_size: int = DEFAULT_EXPORT_SIZE,
     ):
         """Initialize NBD server with storage backend and configuration."""
         self.storage = storage
@@ -54,8 +53,12 @@ class NBDServer:
 
                 try:
                     self._handle_connection(client_socket)
+                except ConnectionError as e:
+                    logger.error(f"Connection error: {e}")
+                except ValueError as e:
+                    logger.error(f"Protocol error: {e}")
                 except Exception as e:
-                    logger.error(f"Error: {e}")
+                    logger.exception(f"Unexpected error handling connection: {e}")
                 finally:
                     client_socket.close()
                     logger.info("Connection closed")
@@ -86,23 +89,27 @@ class NBDServer:
         logger.info("Negotiation complete, entering transmission phase")
         self._handle_transmission(client_socket)
 
-    def _handle_negotiation(self, client_socket: socket.socket) -> Optional[str]:
+    def _handle_negotiation(self, client_socket: socket.socket) -> str | None:
         """Handle option negotiation phase, returns export name or None if aborted."""
         header = recv_exactly(client_socket, 16)
-        option_length = struct.unpack('>QII', header)[2]
-        option_data = recv_exactly(client_socket, option_length) if option_length > 0 else b''
+        option_length = struct.unpack(">QII", header)[2]
+        option_data = recv_exactly(client_socket, option_length) if option_length > 0 else b""
 
         option, data = Requests.option_request(header, option_data)
 
         if option == NBD_OPT_GO:
-            export_name_length = struct.unpack('>I', data[:4])[0]
-            export_name = data[4:4+export_name_length].decode('utf-8')
+            export_name_length = struct.unpack(">I", data[:4])[0]
+            export_name = data[4 : 4 + export_name_length].decode("utf-8")
             logger.info(f"Export name: '{export_name}'")
 
             # Send info reply
-            client_socket.sendall(Responses.info_reply(option, self.export_size, TRANSMISSION_FLAGS))
+            client_socket.sendall(
+                Responses.info_reply(option, self.export_size, TRANSMISSION_FLAGS)
+            )
             size_mb = self.export_size / (1024 * 1024)
-            logger.debug(f"Sent NBD_REP_INFO: size={size_mb:.0f}MB, flags=0x{TRANSMISSION_FLAGS:04x}")
+            logger.debug(
+                f"Sent NBD_REP_INFO: size={size_mb:.0f}MB, flags=0x{TRANSMISSION_FLAGS:04x}"
+            )
 
             # Send ack reply
             client_socket.sendall(Responses.ack_reply(option))
@@ -135,17 +142,21 @@ class NBDServer:
                 logger.info("Client requested disconnect")
                 break
             else:
-                logger.warning(f"Unsupported command: {cmd_type}")
+                logger.warning(f"Unsupported command type {cmd_type} received")
                 client_socket.sendall(Responses.simple_reply(1, handle))
 
-    def _handle_read(self, client_socket: socket.socket, handle: int, offset: int, length: int) -> None:
+    def _handle_read(
+        self, client_socket: socket.socket, handle: int, offset: int, length: int
+    ) -> None:
         """Handle READ command: read from storage and send data to client."""
         data = self.storage.read(offset, length)
         client_socket.sendall(Responses.simple_reply(0, handle))
         client_socket.sendall(data)
         logger.debug(f"Sent READ reply: {length} bytes")
 
-    def _handle_write(self, client_socket: socket.socket, handle: int, offset: int, length: int) -> None:
+    def _handle_write(
+        self, client_socket: socket.socket, handle: int, offset: int, length: int
+    ) -> None:
         """Handle WRITE command: receive data from client and write to storage."""
         write_data = recv_exactly(client_socket, length)
         self.storage.write(offset, write_data)

@@ -2,18 +2,18 @@ import socket
 import struct
 import unittest
 
-from nbd_server.protocol import recv_exactly, Responses, Requests
 from nbd_server.constants import (
-    NBDMAGIC,
     IHAVEOPT,
     NBD_FLAG_FIXED_NEWSTYLE,
-    NBD_SIMPLE_REPLY_MAGIC,
-    NBD_REP_MAGIC,
-    NBD_REP_INFO,
-    NBD_REP_ACK,
     NBD_INFO_EXPORT,
+    NBD_REP_ACK,
+    NBD_REP_INFO,
+    NBD_REP_MAGIC,
     NBD_REQUEST_MAGIC,
+    NBD_SIMPLE_REPLY_MAGIC,
+    NBDMAGIC,
 )
+from nbd_server.protocol import Requests, Responses, recv_exactly
 
 
 class TestRecvExactly(unittest.TestCase):
@@ -22,7 +22,7 @@ class TestRecvExactly(unittest.TestCase):
         sender, receiver = socket.socketpair()
 
         try:
-            test_data = b'hello'
+            test_data = b"hello"
             sender.sendall(test_data)
 
             result = recv_exactly(receiver, 5)
@@ -36,7 +36,7 @@ class TestRecvExactly(unittest.TestCase):
         sender, receiver = socket.socketpair()
 
         try:
-            test_data = b''
+            test_data = b""
             sender.sendall(test_data)
 
             result = recv_exactly(receiver, 0)
@@ -50,7 +50,7 @@ class TestRecvExactly(unittest.TestCase):
         sender, receiver = socket.socketpair()
 
         try:
-            test_data = b'The quick brown fox jumps over the lazy dog! 1234567890 @#$%^&*()_+-=[]{}|;:,.<>?/~`'
+            test_data = b"The quick brown fox jumps over the lazy dog! 1234567890 @#$%^&*()_+-=[]{}|;:,.<>?/~`"
             sender.sendall(test_data)
 
             result = recv_exactly(receiver, len(test_data))
@@ -68,7 +68,7 @@ class TestResponses(unittest.TestCase):
 
         self.assertEqual(len(result), 18)
 
-        magic, ihaveopt, flags = struct.unpack('>QQH', result)
+        magic, ihaveopt, flags = struct.unpack(">QQH", result)
         self.assertEqual(magic, NBDMAGIC)
         self.assertEqual(ihaveopt, IHAVEOPT)
         self.assertEqual(flags, NBD_FLAG_FIXED_NEWSTYLE)
@@ -81,7 +81,7 @@ class TestResponses(unittest.TestCase):
 
         self.assertEqual(len(result), 16)
 
-        magic, error, reply_handle = struct.unpack('>IIQ', result)
+        magic, error, reply_handle = struct.unpack(">IIQ", result)
         self.assertEqual(magic, NBD_SIMPLE_REPLY_MAGIC)
         self.assertEqual(error, error_code)
         self.assertEqual(reply_handle, handle)
@@ -96,13 +96,13 @@ class TestResponses(unittest.TestCase):
         header = result[:20]
         info_data = result[20:]
 
-        magic, reply_option, reply_type, length = struct.unpack('>QIII', header)
+        magic, reply_option, reply_type, length = struct.unpack(">QIII", header)
         self.assertEqual(magic, NBD_REP_MAGIC)
         self.assertEqual(reply_option, option)
         self.assertEqual(reply_type, NBD_REP_INFO)
         self.assertEqual(length, len(info_data))
 
-        info_type, size, flags = struct.unpack('>HQH', info_data)
+        info_type, size, flags = struct.unpack(">HQH", info_data)
         self.assertEqual(info_type, NBD_INFO_EXPORT)
         self.assertEqual(size, export_size)
         self.assertEqual(flags, transmission_flags)
@@ -114,7 +114,7 @@ class TestResponses(unittest.TestCase):
 
         self.assertEqual(len(result), 20)
 
-        magic, reply_option, reply_type, length = struct.unpack('>QIII', result)
+        magic, reply_option, reply_type, length = struct.unpack(">QIII", result)
         self.assertEqual(magic, NBD_REP_MAGIC)
         self.assertEqual(reply_option, option)
         self.assertEqual(reply_type, NBD_REP_ACK)
@@ -125,7 +125,7 @@ class TestRequests(unittest.TestCase):
 
     def test_client_flags(self):
         flags_value = 0x00000001
-        data = struct.pack('>I', flags_value)
+        data = struct.pack(">I", flags_value)
 
         result = Requests.client_flags(data)
 
@@ -134,8 +134,8 @@ class TestRequests(unittest.TestCase):
     def test_option_request_valid(self):
         option = 7
         length = 10
-        option_data = b'testdata12'
-        header = struct.pack('>QII', IHAVEOPT, option, length)
+        option_data = b"testdata12"
+        header = struct.pack(">QII", IHAVEOPT, option, length)
 
         result_option, result_data = Requests.option_request(header, option_data)
 
@@ -146,8 +146,8 @@ class TestRequests(unittest.TestCase):
         invalid_magic = 0x1234567890ABCDEF
         option = 7
         length = 10
-        option_data = b'testdata12'
-        header = struct.pack('>QII', invalid_magic, option, length)
+        option_data = b"testdata12"
+        header = struct.pack(">QII", invalid_magic, option, length)
 
         with self.assertRaises(ValueError) as context:
             Requests.option_request(header, option_data)
@@ -160,9 +160,11 @@ class TestRequests(unittest.TestCase):
         handle = 12345
         offset = 1024
         length = 4096
-        data = struct.pack('>IHHQQL', NBD_REQUEST_MAGIC, flags, cmd_type, handle, offset, length)
+        data = struct.pack(">IHHQQL", NBD_REQUEST_MAGIC, flags, cmd_type, handle, offset, length)
 
-        result_cmd_type, result_flags, result_handle, result_offset, result_length = Requests.command(data)
+        result_cmd_type, result_flags, result_handle, result_offset, result_length = (
+            Requests.command(data)
+        )
 
         self.assertEqual(result_cmd_type, cmd_type)
         self.assertEqual(result_flags, flags)
@@ -177,7 +179,7 @@ class TestRequests(unittest.TestCase):
         handle = 12345
         offset = 1024
         length = 4096
-        data = struct.pack('>IHHQQL', invalid_magic, flags, cmd_type, handle, offset, length)
+        data = struct.pack(">IHHQQL", invalid_magic, flags, cmd_type, handle, offset, length)
 
         with self.assertRaises(ValueError) as context:
             Requests.command(data)
@@ -185,5 +187,141 @@ class TestRequests(unittest.TestCase):
         self.assertIn("Invalid request magic", str(context.exception))
 
 
-if __name__ == '__main__':
+class TestRecvExactlyEdgeCases(unittest.TestCase):
+
+    def test_recv_exactly_connection_closed_early(self):
+        sender, receiver = socket.socketpair()
+
+        try:
+            test_data = b"hi"
+            sender.sendall(test_data)
+            sender.close()
+
+            with self.assertRaises(ConnectionError) as context:
+                recv_exactly(receiver, 10)
+
+            self.assertIn("Connection closed", str(context.exception))
+        finally:
+            receiver.close()
+
+    def test_recv_exactly_multiple_chunks(self):
+        sender, receiver = socket.socketpair()
+
+        try:
+            receiver.settimeout(1.0)
+
+            import threading
+
+            def send_in_chunks():
+                import time
+
+                sender.sendall(b"part1")
+                time.sleep(0.05)
+                sender.sendall(b"part2")
+                time.sleep(0.05)
+                sender.sendall(b"part3")
+
+            thread = threading.Thread(target=send_in_chunks)
+            thread.start()
+
+            result = recv_exactly(receiver, 15)
+            thread.join()
+
+            self.assertEqual(result, b"part1part2part3")
+        finally:
+            sender.close()
+            receiver.close()
+
+
+class TestRequestsEdgeCases(unittest.TestCase):
+
+    def test_client_flags_zero(self):
+        data = struct.pack(">I", 0)
+
+        result = Requests.client_flags(data)
+
+        self.assertEqual(result, 0)
+
+    def test_option_request_zero_length(self):
+        option = 2
+        length = 0
+        option_data = b""
+        header = struct.pack(">QII", IHAVEOPT, option, length)
+
+        result_option, result_data = Requests.option_request(header, option_data)
+
+        self.assertEqual(result_option, option)
+        self.assertEqual(result_data, b"")
+
+    def test_command_zero_offset_and_length(self):
+        flags = 0
+        cmd_type = 3
+        handle = 0
+        offset = 0
+        length = 0
+        data = struct.pack(">IHHQQL", NBD_REQUEST_MAGIC, flags, cmd_type, handle, offset, length)
+
+        result_cmd_type, result_flags, result_handle, result_offset, result_length = (
+            Requests.command(data)
+        )
+
+        self.assertEqual(result_cmd_type, cmd_type)
+        self.assertEqual(result_flags, flags)
+        self.assertEqual(result_handle, handle)
+        self.assertEqual(result_offset, offset)
+        self.assertEqual(result_length, length)
+
+    def test_command_large_offset(self):
+        flags = 0
+        cmd_type = 0
+        handle = 999
+        offset = 2**63 - 1
+        length = 4096
+        data = struct.pack(">IHHQQL", NBD_REQUEST_MAGIC, flags, cmd_type, handle, offset, length)
+
+        result_cmd_type, result_flags, result_handle, result_offset, result_length = (
+            Requests.command(data)
+        )
+
+        self.assertEqual(result_cmd_type, cmd_type)
+        self.assertEqual(result_offset, offset)
+        self.assertEqual(result_length, length)
+
+
+class TestResponsesEdgeCases(unittest.TestCase):
+
+    def test_info_reply_zero_size(self):
+        option = 7
+        export_size = 0
+        transmission_flags = 0
+
+        result = Responses.info_reply(option, export_size, transmission_flags)
+
+        header = result[:20]
+        info_data = result[20:]
+
+        magic, reply_option, reply_type, length = struct.unpack(">QIII", header)
+        self.assertEqual(magic, NBD_REP_MAGIC)
+        info_type, size, flags = struct.unpack(">HQH", info_data)
+        self.assertEqual(size, 0)
+
+    def test_simple_reply_non_zero_error(self):
+        error_code = 5
+        handle = 42
+
+        result = Responses.simple_reply(error_code, handle)
+
+        magic, error, reply_handle = struct.unpack(">IIQ", result)
+        self.assertEqual(error, error_code)
+
+    def test_ack_reply_various_options(self):
+        for option in [0, 1, 2, 7, 8, 65535]:
+            result = Responses.ack_reply(option)
+
+            magic, reply_option, reply_type, length = struct.unpack(">QIII", result)
+            self.assertEqual(reply_option, option)
+            self.assertEqual(reply_type, NBD_REP_ACK)
+
+
+if __name__ == "__main__":
     unittest.main()
