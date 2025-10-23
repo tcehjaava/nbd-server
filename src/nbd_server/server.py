@@ -1,10 +1,3 @@
-"""
-NBD Server Implementation.
-
-This module implements the main NBD server that handles client connections,
-protocol negotiation, and command processing.
-"""
-
 import logging
 import socket
 import struct
@@ -29,12 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class NBDServer:
-    """
-    NBD (Network Block Device) server.
-
-    Handles client connections, protocol negotiation, and block device operations
-    using a pluggable storage backend.
-    """
+    """NBD (Network Block Device) server."""
 
     def __init__(
         self,

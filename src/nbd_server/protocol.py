@@ -1,10 +1,3 @@
-"""
-NBD Protocol Message Serialization.
-
-This module handles packing and unpacking NBD protocol messages.
-Socket I/O operations are handled by the server module.
-"""
-
 import socket
 import struct
 from .constants import (

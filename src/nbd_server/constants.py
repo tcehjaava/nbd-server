@@ -1,10 +1,3 @@
-"""
-NBD Protocol Constants and Configuration.
-
-This module contains all the magic numbers, flags, command types, and
-configuration values used in the NBD (Network Block Device) protocol.
-"""
-
 # NBD Protocol Magic Numbers
 NBDMAGIC = 0x4e42444d41474943  # "NBDMAGIC" in ASCII
 IHAVEOPT = 0x49484156454f5054  # "IHAVEOPT" in ASCII
