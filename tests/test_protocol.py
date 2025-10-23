@@ -1,7 +1,7 @@
 import socket
 import unittest
 
-from src.nbd_server.protocol import recv_exactly
+from nbd_server.protocol import recv_exactly
 
 
 class TestRecvExactly(unittest.TestCase):
