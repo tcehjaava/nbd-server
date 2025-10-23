@@ -6,4 +6,8 @@ that stores block data in S3-compatible storage using a content-addressable,
 copy-on-write architecture.
 """
 
+from .server import NBDServer
+from .storage import StorageBackend, InMemoryStorage
+
 __version__ = "0.1.0"
+__all__ = ["NBDServer", "StorageBackend", "InMemoryStorage"]

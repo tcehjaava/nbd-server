@@ -1,0 +1,43 @@
+"""
+NBD Protocol Constants and Configuration.
+
+This module contains all the magic numbers, flags, command types, and
+configuration values used in the NBD (Network Block Device) protocol.
+"""
+
+# NBD Protocol Magic Numbers
+NBDMAGIC = 0x4e42444d41474943  # "NBDMAGIC" in ASCII
+IHAVEOPT = 0x49484156454f5054  # "IHAVEOPT" in ASCII
+NBD_REP_MAGIC = 0x3e889045565a9
+NBD_SIMPLE_REPLY_MAGIC = 0x67446698
+NBD_REQUEST_MAGIC = 0x25609513
+
+# Server Handshake Flags
+NBD_FLAG_FIXED_NEWSTYLE = 0x0001
+
+# NBD Options (Client -> Server during negotiation)
+NBD_OPT_ABORT = 0x00000002
+NBD_OPT_GO = 0x00000007
+
+# NBD Reply Types (Server -> Client during negotiation)
+NBD_REP_ACK = 0x00000001
+NBD_REP_INFO = 0x00000003
+
+# NBD Info Types
+NBD_INFO_EXPORT = 0x0000
+
+# Transmission Flags (for export)
+NBD_FLAG_HAS_FLAGS = 0x0001
+NBD_FLAG_SEND_FLUSH = 0x0002
+TRANSMISSION_FLAGS = NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH
+
+# NBD Commands (Client -> Server during transmission phase)
+NBD_CMD_READ = 0
+NBD_CMD_WRITE = 1
+NBD_CMD_DISC = 2  # Disconnect
+NBD_CMD_FLUSH = 3
+
+# Server Configuration
+DEFAULT_HOST = 'localhost'
+DEFAULT_PORT = 10809
+DEFAULT_EXPORT_SIZE = 1024 * 1024 * 1024  # 1GB
