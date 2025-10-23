@@ -12,6 +12,15 @@ NBD_OPT_GO = 0x00000007
 
 NBD_REP_MAGIC = 0x3e889045565a9
 NBD_REP_ACK = 0x00000001
+NBD_REP_INFO = 0x00000003
+
+NBD_INFO_EXPORT = 0x0000
+
+NBD_FLAG_HAS_FLAGS = 0x0001
+NBD_FLAG_SEND_FLUSH = 0x0002
+TRANSMISSION_FLAGS = NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH
+
+EXPORT_SIZE = 1024 * 1024 * 1024
 
 HOST = 'localhost'
 PORT = 10809
@@ -55,6 +64,17 @@ def parse_option_request(client_socket):
     return option, data
 
 
+def send_info_reply(client_socket, option, export_size):
+    info_data = struct.pack('>HQH', NBD_INFO_EXPORT, export_size, TRANSMISSION_FLAGS)
+    info_length = len(info_data)
+
+    reply_header = struct.pack('>QIII', NBD_REP_MAGIC, option, NBD_REP_INFO, info_length)
+    client_socket.sendall(reply_header + info_data)
+
+    size_mb = export_size / (1024 * 1024)
+    print(f"  Sent NBD_REP_INFO: size={size_mb:.0f}MB, flags=0x{TRANSMISSION_FLAGS:04x}")
+
+
 def send_ack_reply(client_socket, option):
     reply = struct.pack('>QIII', NBD_REP_MAGIC, option, NBD_REP_ACK, 0)
     client_socket.sendall(reply)
@@ -88,18 +108,25 @@ def main():
                     export_name = data[4:4+export_name_length].decode('utf-8')
                     print(f"  Export name: '{export_name}'")
 
+                    send_info_reply(client_socket, option, EXPORT_SIZE)
                     send_ack_reply(client_socket, option)
-                    print("  Option negotiation complete")
+                    print("  Negotiation complete, entering transmission phase")
+                    print("  Waiting for commands (not implemented yet)...")
 
                 elif option == NBD_OPT_ABORT:
                     print("  Client requested abort")
+                    client_socket.close()
+                    print("  Connection closed")
+                    continue
+
                 else:
                     print(f"  Unsupported option: 0x{option:08x}")
+                    client_socket.close()
+                    print("  Connection closed")
+                    continue
 
             except Exception as e:
                 print(f"  Error: {e}")
-
-            finally:
                 client_socket.close()
                 print("  Connection closed")
 
