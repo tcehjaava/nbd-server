@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from typing import Generator
 
 import boto3
 from botocore.exceptions import ClientError
@@ -125,15 +126,16 @@ class S3Storage(StorageBackend):
     def _get_block_offset(self, offset: int) -> int:
         return (offset // self.block_size) * self.block_size
 
-    def read(self, offset: int, length: int) -> bytes:
-        """Read data that may span multiple blocks from S3."""
-        # Reads may span multiple blocks, so we loop until we've read all requested bytes
-        result = bytearray()
+    def _iter_blocks(self, offset: int, length: int) -> Generator[tuple[int, int, int], None, None]:
+        """Iterate over blocks that span the given offset and length range.
 
-        bytes_read = 0
-        while bytes_read < length:
-            # Calculate the absolute byte position we're currently reading from
-            current_offset = offset + bytes_read
+        Yields tuples of (block_offset, offset_in_block, chunk_size) for each block.
+        """
+        # Operations may span multiple blocks, so we loop until we've processed all bytes
+        bytes_processed = 0
+        while bytes_processed < length:
+            # Calculate the absolute byte position we're currently processing
+            current_offset = offset + bytes_processed
 
             # Find which block contains this byte (block-aligned offset)
             block_offset = self._get_block_offset(current_offset)
@@ -141,18 +143,21 @@ class S3Storage(StorageBackend):
             # Calculate position within the block
             offset_in_block = current_offset - block_offset
 
-            # Determine how many bytes to read from this block:
-            # - Either the remaining bytes we need (length - bytes_read)
+            # Determine how many bytes to process in this block:
+            # - Either the remaining bytes we need to process (length - bytes_processed)
             # - Or the remaining bytes in this block (block_size - offset_in_block)
             # Whichever is smaller
-            bytes_to_read = min(length - bytes_read, self.block_size - offset_in_block)
+            chunk_size = min(length - bytes_processed, self.block_size - offset_in_block)
 
-            # Fetch the entire block (from dirty_blocks or S3)
+            yield block_offset, offset_in_block, chunk_size
+            bytes_processed += chunk_size
+
+    def read(self, offset: int, length: int) -> bytes:
+        result = bytearray()
+
+        for block_offset, offset_in_block, chunk_size in self._iter_blocks(offset, length):
             block_data = self._read_block(block_offset)
-
-            # Extract only the bytes we need from this block and append to result
-            result.extend(block_data[offset_in_block : offset_in_block + bytes_to_read])
-            bytes_read += bytes_to_read
+            result.extend(block_data[offset_in_block : offset_in_block + chunk_size])
 
         return bytes(result)
 
@@ -178,43 +183,21 @@ class S3Storage(StorageBackend):
                 raise
 
     def write(self, offset: int, data: bytes) -> None:
-        """Write data that may span multiple blocks, buffering in memory until flush."""
-        # Writes may span multiple blocks, so we loop until we've written all data
         bytes_written = 0
-        data_length = len(data)
 
-        while bytes_written < data_length:
-            # Calculate the absolute byte position we're currently writing to
-            current_offset = offset + bytes_written
-
-            # Find which block contains this byte (block-aligned offset)
-            block_offset = self._get_block_offset(current_offset)
-
-            # Calculate position within the block
-            offset_in_block = current_offset - block_offset
-
-            # Determine how many bytes to write to this block:
-            # - Either the remaining bytes we need to write (data_length - bytes_written)
-            # - Or the remaining bytes in this block (block_size - offset_in_block)
-            # Whichever is smaller
-            bytes_to_write = min(data_length - bytes_written, self.block_size - offset_in_block)
-
-            # Get the current block data (from dirty_blocks or S3) and modify it
+        for block_offset, offset_in_block, chunk_size in self._iter_blocks(offset, len(data)):
             block_data = bytearray(self._read_block(block_offset))
-            block_data[offset_in_block : offset_in_block + bytes_to_write] = data[
-                bytes_written : bytes_written + bytes_to_write
+            block_data[offset_in_block : offset_in_block + chunk_size] = data[
+                bytes_written : bytes_written + chunk_size
             ]
-
-            # Store the modified block in dirty_blocks (not written to S3 until flush)
             self.dirty_blocks[block_offset] = bytes(block_data)
-            bytes_written += bytes_to_write
+            bytes_written += chunk_size
 
         logger.debug(
-            f"Buffered write: offset={offset}, length={data_length}, dirty_blocks={len(self.dirty_blocks)}"
+            f"Buffered write: offset={offset}, length={len(data)}, dirty_blocks={len(self.dirty_blocks)}"
         )
 
     def flush(self) -> None:
-        """Flush all dirty blocks to S3, ensuring data persistence."""
         if not self.dirty_blocks:
             logger.debug("No dirty blocks to flush")
             return
