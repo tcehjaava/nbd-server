@@ -18,31 +18,8 @@ from src.nbd_server.constants import (
     DEFAULT_S3_ENDPOINT,
     DEFAULT_S3_REGION,
     DEFAULT_S3_SECRET_KEY,
+    parse_size,
 )
-
-
-def parse_size(size_str: str) -> int:
-    size_str = size_str.strip().upper()
-
-    multipliers = {
-        'KB': 1024,
-        'MB': 1024 ** 2,
-        'GB': 1024 ** 3,
-        'TB': 1024 ** 4,
-    }
-
-    for suffix, multiplier in multipliers.items():
-        if size_str.endswith(suffix):
-            try:
-                value = float(size_str[:-len(suffix)].strip())
-                return int(value * multiplier)
-            except ValueError:
-                raise ValueError(f"Invalid size format: {size_str}")
-
-    try:
-        return int(size_str)
-    except ValueError:
-        raise ValueError(f"Invalid size format: {size_str}. Use format like '1GB', '512MB', or bytes as integer")
 
 
 def main():

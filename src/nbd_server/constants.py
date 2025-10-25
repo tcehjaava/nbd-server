@@ -42,3 +42,28 @@ DEFAULT_S3_SECRET_KEY = "minioadmin"
 DEFAULT_S3_BUCKET = "nbd-storage"
 DEFAULT_S3_REGION = "us-east-1"
 DEFAULT_BLOCK_SIZE = "128KB"
+
+
+def parse_size(size_str: str) -> int:
+    """Parse human-readable size string to bytes (e.g., '1GB' -> 1073741824, '128KB' -> 131072)."""
+    size_str = size_str.strip().upper()
+
+    multipliers = {
+        'KB': 1024,
+        'MB': 1024 ** 2,
+        'GB': 1024 ** 3,
+        'TB': 1024 ** 4,
+    }
+
+    for suffix, multiplier in multipliers.items():
+        if size_str.endswith(suffix):
+            try:
+                value = float(size_str[:-len(suffix)].strip())
+                return int(value * multiplier)
+            except ValueError:
+                raise ValueError(f"Invalid size format: {size_str}")
+
+    try:
+        return int(size_str)
+    except ValueError:
+        raise ValueError(f"Invalid size format: {size_str}. Use format like '1GB', '512MB', or bytes as integer")

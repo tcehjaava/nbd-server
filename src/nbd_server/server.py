@@ -13,6 +13,7 @@ from .constants import (
     NBD_OPT_ABORT,
     NBD_OPT_GO,
     TRANSMISSION_FLAGS,
+    parse_size,
 )
 from .protocol import Requests, Responses, recv_exactly
 from .storage import StorageBackend
@@ -28,7 +29,7 @@ class NBDServer:
         storage: StorageBackend,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
-        export_size: int = DEFAULT_EXPORT_SIZE,
+        export_size: int = parse_size(DEFAULT_EXPORT_SIZE),
     ):
         """Initialize NBD server with storage backend and configuration."""
         self.storage = storage
