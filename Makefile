@@ -1,7 +1,8 @@
-.PHONY: help install install-dev format lint type-check test test-cov clean docker-up docker-down run stop
+.PHONY: help venv install install-dev format lint type-check test test-cov test-clean clean docker-up docker-down run stop
 
 help:
 	@echo "Available commands:"
+	@echo "  make venv           - Create virtual environment if it doesn't exist"
 	@echo "  make install        - Install production dependencies"
 	@echo "  make install-dev    - Install development dependencies"
 	@echo "  make format         - Format code with black and isort"
@@ -9,46 +10,59 @@ help:
 	@echo "  make type-check     - Run mypy type checking"
 	@echo "  make test           - Run tests"
 	@echo "  make test-cov       - Run tests with coverage report"
+	@echo "  make test-clean     - Stop docker services after testing"
 	@echo "  make clean          - Remove build artifacts and cache"
 	@echo "  make docker-up      - Start MinIO with docker-compose"
 	@echo "  make docker-down    - Stop docker-compose services"
 	@echo "  make run            - Run NBD server"
 	@echo "  make stop           - Stop running NBD server"
 
-install:
-	pip install -r requirements.txt
-	pip install -e .
+venv:
+	@if [ ! -f venv/bin/activate ]; then \
+		echo "Creating virtual environment..."; \
+		python3 -m venv venv; \
+		echo "Virtual environment created successfully"; \
+	else \
+		echo "Virtual environment already exists"; \
+	fi
 
-install-dev:
-	pip install -r requirements-dev.txt
-	pip install -e .
+install: venv
+	venv/bin/pip install -r requirements.txt
+	venv/bin/pip install -e .
 
-format:
-	black src/ tests/
-	isort src/ tests/
+install-dev: venv
+	venv/bin/pip install -r requirements-dev.txt
+	venv/bin/pip install -e .
 
-lint:
-	ruff check src/ tests/
+format: venv
+	venv/bin/black src/ tests/
+	venv/bin/isort src/ tests/
 
-type-check:
-	mypy src/
+lint: venv
+	venv/bin/ruff check src/ tests/
 
-test:
-	pytest
+type-check: venv
+	venv/bin/mypy src/
 
-test-cov:
-	pytest --cov-report=html
+test: install-dev docker-up
+	venv/bin/pytest
+
+test-cov: install-dev docker-up
+	venv/bin/pytest --cov=src --cov-report=html
 	@echo "Coverage report generated in htmlcov/index.html"
+
+test-clean:
+	$(MAKE) docker-down
 
 clean:
 	rm -rf build/
 	rm -rf dist/
-	rm -rf *.egg-info
 	rm -rf .pytest_cache/
 	rm -rf .mypy_cache/
 	rm -rf .ruff_cache/
 	rm -rf htmlcov/
 	rm -rf .coverage
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 
@@ -59,11 +73,11 @@ docker-up:
 docker-down:
 	docker-compose down
 
-run:
-	python3 main.py
+run: venv
+	venv/bin/python main.py
 
 stop:
-	@PID=$$(lsof -t -i :10809 2>/dev/null); \
+	@PID=$$(lsof -t -i :10809 2>/dev/null || echo ""); \
 	if [ -n "$$PID" ]; then \
 		kill $$PID && echo "NBD server stopped (PID $$PID)"; \
 	else \
