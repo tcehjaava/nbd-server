@@ -3,7 +3,14 @@ import struct
 import threading
 import unittest
 
+import boto3
+
 from nbd_server.constants import (
+    DEFAULT_S3_ACCESS_KEY,
+    DEFAULT_S3_BUCKET,
+    DEFAULT_S3_ENDPOINT,
+    DEFAULT_S3_REGION,
+    DEFAULT_S3_SECRET_KEY,
     IHAVEOPT,
     NBD_CMD_DISC,
     NBD_CMD_FLUSH,
@@ -20,15 +27,55 @@ from nbd_server.constants import (
     NBDMAGIC,
 )
 from nbd_server.server import NBDServer
-from nbd_server.storage import InMemoryStorage
+from nbd_server.storage import S3Storage
 
 NBD_FLAG_C_FIXED_NEWSTYLE = 0x00000001
+DEFAULT_TEST_BLOCK_SIZE = 131072
 
 
-class TestNBDServerHandshake(unittest.TestCase):
+class BaseNBDServerTest(unittest.TestCase):
+
+    def setUp(self):
+        self.export_name = "test-server-export"
+        self._cleanup_s3_blocks()
+
+    def _cleanup_s3_blocks(self):
+        s3_client = boto3.client(
+            "s3",
+            endpoint_url=DEFAULT_S3_ENDPOINT,
+            aws_access_key_id=DEFAULT_S3_ACCESS_KEY,
+            aws_secret_access_key=DEFAULT_S3_SECRET_KEY,
+            region_name=DEFAULT_S3_REGION,
+        )
+
+        prefix = f"blocks/{self.export_name}/"
+
+        try:
+            response = s3_client.list_objects_v2(Bucket=DEFAULT_S3_BUCKET, Prefix=prefix)
+            if "Contents" in response:
+                objects_to_delete = [{"Key": obj["Key"]} for obj in response["Contents"]]
+                s3_client.delete_objects(
+                    Bucket=DEFAULT_S3_BUCKET, Delete={"Objects": objects_to_delete}
+                )
+        except Exception:
+            pass
+
+    def _create_storage(self, block_size=DEFAULT_TEST_BLOCK_SIZE):
+        return S3Storage.create(
+            export_name=self.export_name,
+            endpoint_url=DEFAULT_S3_ENDPOINT,
+            access_key=DEFAULT_S3_ACCESS_KEY,
+            secret_key=DEFAULT_S3_SECRET_KEY,
+            bucket=DEFAULT_S3_BUCKET,
+            region=DEFAULT_S3_REGION,
+            block_size=block_size,
+        )
+
+
+class TestNBDServerHandshake(BaseNBDServerTest):
 
     def test_handshake_sent_on_connection(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
@@ -57,10 +104,10 @@ class TestNBDServerHandshake(unittest.TestCase):
             client_socket.close()
 
 
-class TestNBDServerClientFlags(unittest.TestCase):
+class TestNBDServerClientFlags(BaseNBDServerTest):
 
     def test_parse_client_flags(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
@@ -89,10 +136,10 @@ class TestNBDServerClientFlags(unittest.TestCase):
             client_socket.close()
 
 
-class TestNBDServerNegotiation(unittest.TestCase):
+class TestNBDServerNegotiation(BaseNBDServerTest):
 
     def test_negotiation_with_opt_go(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
@@ -136,7 +183,7 @@ class TestNBDServerNegotiation(unittest.TestCase):
             client_socket.close()
 
     def test_negotiation_with_opt_abort(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
@@ -167,7 +214,7 @@ class TestNBDServerNegotiation(unittest.TestCase):
             client_socket.close()
 
 
-class TestNBDServerTransmission(unittest.TestCase):
+class TestNBDServerTransmission(BaseNBDServerTest):
 
     def _negotiate_and_enter_transmission(self, client_socket):
         client_socket.recv(18)
@@ -182,7 +229,7 @@ class TestNBDServerTransmission(unittest.TestCase):
         client_socket.recv(20)
 
     def test_transmission_cmd_read(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         test_data = b"hello world"
         storage.write(0, test_data)
         server = NBDServer(storage)
@@ -222,7 +269,7 @@ class TestNBDServerTransmission(unittest.TestCase):
             client_socket.close()
 
     def test_transmission_cmd_write(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
@@ -263,7 +310,7 @@ class TestNBDServerTransmission(unittest.TestCase):
             client_socket.close()
 
     def test_transmission_cmd_flush(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
@@ -296,7 +343,7 @@ class TestNBDServerTransmission(unittest.TestCase):
             client_socket.close()
 
     def test_transmission_cmd_disc(self):
-        storage = InMemoryStorage()
+        storage = self._create_storage()
         server = NBDServer(storage)
 
         client_socket, server_socket = socket.socketpair()
