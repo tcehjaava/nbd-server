@@ -81,3 +81,6 @@ s3-data/
 # NBD testing
 *.img
 *.raw
+
+# Environment variables (keep .env.example)
+.env

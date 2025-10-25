@@ -5,8 +5,6 @@ from typing import Generator
 import boto3
 from botocore.exceptions import ClientError
 
-from .constants import BLOCK_SIZE
-
 logger = logging.getLogger(__name__)
 
 
@@ -29,31 +27,6 @@ class StorageBackend(ABC):
         pass
 
 
-class InMemoryStorage(StorageBackend):
-    """In-memory storage backend using a sparse dictionary."""
-
-    def __init__(self) -> None:
-        self.data: dict[int, bytes] = {}
-
-    def read(self, offset: int, length: int) -> bytes:
-        result = b""
-        for i in range(length):
-            byte_offset = offset + i
-            if byte_offset in self.data:
-                result += self.data[byte_offset]
-            else:
-                result += b"\x00"
-        return result
-
-    def write(self, offset: int, data: bytes) -> None:
-        for i in range(len(data)):
-            self.data[offset + i] = data[i : i + 1]
-
-    def flush(self) -> None:
-        """No-op for in-memory storage as all writes are immediately persisted in memory."""
-        pass
-
-
 class S3Storage(StorageBackend):
     """S3-backed storage using fixed-size blocks."""
 
@@ -65,7 +38,7 @@ class S3Storage(StorageBackend):
         secret_key: str,
         bucket: str,
         region: str,
-        block_size: int = BLOCK_SIZE,
+        block_size: int,
     ) -> None:
         self.export_name = export_name
         self.bucket = bucket
@@ -91,7 +64,7 @@ class S3Storage(StorageBackend):
         secret_key: str,
         bucket: str,
         region: str,
-        block_size: int = BLOCK_SIZE,
+        block_size: int,
     ) -> "S3Storage":
         """Create S3Storage instance and ensure bucket exists."""
         instance = cls(

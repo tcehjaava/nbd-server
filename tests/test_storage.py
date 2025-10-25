@@ -3,7 +3,6 @@ import unittest
 import boto3
 
 from nbd_server.constants import (
-    BLOCK_SIZE,
     DEFAULT_S3_ACCESS_KEY,
     DEFAULT_S3_BUCKET,
     DEFAULT_S3_ENDPOINT,
@@ -11,6 +10,8 @@ from nbd_server.constants import (
     DEFAULT_S3_SECRET_KEY,
 )
 from nbd_server.storage import S3Storage
+
+DEFAULT_TEST_BLOCK_SIZE = 131072  # 128KB
 
 
 class TestS3Storage(unittest.TestCase):
@@ -40,7 +41,7 @@ class TestS3Storage(unittest.TestCase):
         except Exception:
             pass
 
-    def _create_storage(self, block_size=BLOCK_SIZE):
+    def _create_storage(self, block_size=DEFAULT_TEST_BLOCK_SIZE):
         return S3Storage.create(
             export_name=self.export_name,
             endpoint_url=DEFAULT_S3_ENDPOINT,
