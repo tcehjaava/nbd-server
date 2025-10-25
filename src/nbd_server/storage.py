@@ -69,6 +69,7 @@ class S3Storage(StorageBackend):
         self.export_name = export_name
         self.bucket = bucket
         self.block_size = block_size
+        self.dirty_blocks: dict[int, bytes] = {}
 
         self.s3_client = boto3.client(
             "s3",
@@ -146,8 +147,8 @@ class S3Storage(StorageBackend):
             # Whichever is smaller
             bytes_to_read = min(length - bytes_read, self.block_size - offset_in_block)
 
-            # Fetch the entire block from S3 (or zeros if not exists)
-            block_data = self._read_block_from_s3(block_offset)
+            # Fetch the entire block (from dirty_blocks or S3)
+            block_data = self._read_block(block_offset)
 
             # Extract only the bytes we need from this block and append to result
             result.extend(block_data[offset_in_block : offset_in_block + bytes_to_read])
@@ -155,7 +156,12 @@ class S3Storage(StorageBackend):
 
         return bytes(result)
 
-    def _read_block_from_s3(self, block_offset: int) -> bytes:
+    def _read_block(self, block_offset: int) -> bytes:
+        """Read a block, checking dirty_blocks first for read-your-writes consistency."""
+        if block_offset in self.dirty_blocks:
+            logger.debug(f"Read block from dirty_blocks: block_offset={block_offset}")
+            return self.dirty_blocks[block_offset]
+
         key = self._get_block_key(block_offset)
         try:
             response = self.s3_client.get_object(Bucket=self.bucket, Key=key)
@@ -172,7 +178,65 @@ class S3Storage(StorageBackend):
                 raise
 
     def write(self, offset: int, data: bytes) -> None:
-        pass
+        """Write data that may span multiple blocks, buffering in memory until flush."""
+        # Writes may span multiple blocks, so we loop until we've written all data
+        bytes_written = 0
+        data_length = len(data)
+
+        while bytes_written < data_length:
+            # Calculate the absolute byte position we're currently writing to
+            current_offset = offset + bytes_written
+
+            # Find which block contains this byte (block-aligned offset)
+            block_offset = self._get_block_offset(current_offset)
+
+            # Calculate position within the block
+            offset_in_block = current_offset - block_offset
+
+            # Determine how many bytes to write to this block:
+            # - Either the remaining bytes we need to write (data_length - bytes_written)
+            # - Or the remaining bytes in this block (block_size - offset_in_block)
+            # Whichever is smaller
+            bytes_to_write = min(data_length - bytes_written, self.block_size - offset_in_block)
+
+            # Get the current block data (from dirty_blocks or S3) and modify it
+            block_data = bytearray(self._read_block(block_offset))
+            block_data[offset_in_block : offset_in_block + bytes_to_write] = data[
+                bytes_written : bytes_written + bytes_to_write
+            ]
+
+            # Store the modified block in dirty_blocks (not written to S3 until flush)
+            self.dirty_blocks[block_offset] = bytes(block_data)
+            bytes_written += bytes_to_write
+
+        logger.debug(
+            f"Buffered write: offset={offset}, length={data_length}, dirty_blocks={len(self.dirty_blocks)}"
+        )
 
     def flush(self) -> None:
-        pass
+        """Flush all dirty blocks to S3, ensuring data persistence."""
+        if not self.dirty_blocks:
+            logger.debug("No dirty blocks to flush")
+            return
+
+        num_blocks = len(self.dirty_blocks)
+        logger.info(f"Flushing {num_blocks} dirty blocks to S3")
+
+        for block_offset in list(self.dirty_blocks.keys()):
+            block_data = self.dirty_blocks[block_offset]
+            key = self._get_block_key(block_offset)
+
+            try:
+                self.s3_client.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=block_data,
+                )
+                logger.debug(f"Uploaded block to S3: {key} ({len(block_data)} bytes)")
+                del self.dirty_blocks[block_offset]
+
+            except ClientError as e:
+                logger.error(f"Failed to upload block {key}: {e}")
+                raise
+
+        logger.info(f"Successfully flushed {num_blocks} blocks to S3")
