@@ -73,8 +73,8 @@ docker-up:
 docker-down:
 	docker-compose down
 
-run: venv
-	venv/bin/python main.py
+run: venv docker-up
+	venv/bin/python main.py --export-name default-disk
 
 stop:
 	@PID=$$(lsof -t -i :10809 2>/dev/null || echo ""); \
