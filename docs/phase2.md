@@ -19,13 +19,13 @@ Replace `InMemoryStorage` with `S3Storage` that persists all block data to MinIO
 nbd-storage/
   └── blocks/
       └── {export_name}/
-          ├── 0000000000000000  (block at offset 0)
-          ├── 0000000000001000  (block at offset 4096)
-          ├── 0000000000002000  (block at offset 8192)
+          ├── 00000  (block #0, bytes 0-4095)
+          ├── 00001  (block #1, bytes 4096-8191)
+          ├── 00002  (block #2, bytes 8192-12287)
           └── ...
 ```
-- Key format: `blocks/{export_name}/{offset:016x}` (offset in hex, zero-padded to 16 chars)
-- Example: `blocks/my_device/0000000000001000` = block starting at byte 4096
+- Key format: `blocks/{export_name}/{block_number:05x}` (block number in hex, zero-padded to 5 chars)
+- Example: `blocks/my_device/00001` = block #1 (bytes 4096-8191)
 
 ### MinIO Configuration
 ```python
@@ -102,7 +102,7 @@ class S3Storage(StorageBackend):
         # Clear dirty blocks dict after successful upload
 
     def _get_block_key(self, block_offset: int) -> str:
-        # Return "blocks/{export_name}/{offset:016x}"
+        # Return "blocks/{export_name}/{block_number:05x}"
 ```
 
 **Key Design Decisions**:

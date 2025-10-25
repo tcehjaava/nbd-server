@@ -41,4 +41,4 @@ DEFAULT_S3_ACCESS_KEY = "minioadmin"
 DEFAULT_S3_SECRET_KEY = "minioadmin"
 DEFAULT_S3_BUCKET = "nbd-storage"
 DEFAULT_S3_REGION = "us-east-1"
-BLOCK_SIZE = 4096  # 4KB blocks
+BLOCK_SIZE = 131072  # 128KB blocks
