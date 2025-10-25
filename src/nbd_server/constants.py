@@ -34,3 +34,11 @@ NBD_CMD_FLUSH = 3
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 10809
 DEFAULT_EXPORT_SIZE = 1024 * 1024 * 1024  # 1GB
+
+# S3 Storage Configuration
+DEFAULT_S3_ENDPOINT = "http://localhost:9000"
+DEFAULT_S3_ACCESS_KEY = "minioadmin"
+DEFAULT_S3_SECRET_KEY = "minioadmin"
+DEFAULT_S3_BUCKET = "nbd-storage"
+DEFAULT_S3_REGION = "us-east-1"
+BLOCK_SIZE = 4096  # 4KB blocks
