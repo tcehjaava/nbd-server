@@ -2,12 +2,12 @@ import logging
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Optional
 
-import aioboto3
 import aiorwlock
 from botocore.exceptions import ClientError
 
 from .lease_lock import S3LeaseLock
 from .models import S3Config
+from .s3_client import S3ClientManager
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class S3Storage(StorageBackend):
         connection_id: str,
         server_id: str,
         lease_duration: int = 30,
+        s3_client_manager: Optional[S3ClientManager] = None,
     ) -> None:
         self.export_name = export_name
         self.s3_config_model = s3_config
@@ -54,13 +55,7 @@ class S3Storage(StorageBackend):
         self.rwlock = aiorwlock.RWLock()
         self.lease_lock: Optional[S3LeaseLock] = None
 
-        self.session = aioboto3.Session()
-        self.s3_client_config = {
-            "endpoint_url": s3_config.endpoint_url,
-            "aws_access_key_id": s3_config.access_key,
-            "aws_secret_access_key": s3_config.secret_key,
-            "region_name": s3_config.region,
-        }
+        self.s3_manager = s3_client_manager or S3ClientManager(s3_config)
 
         self.lease_lock = S3LeaseLock(
             export_name=export_name,
@@ -68,6 +63,7 @@ class S3Storage(StorageBackend):
             connection_id=connection_id,
             server_id=server_id,
             lease_duration=lease_duration,
+            s3_client_manager=self.s3_manager,
         )
 
         logger.info(
@@ -84,6 +80,7 @@ class S3Storage(StorageBackend):
         connection_id: str,
         server_id: str,
         lease_duration: int = 30,
+        s3_client_manager: Optional[S3ClientManager] = None,
     ) -> "S3Storage":
         """Create S3Storage instance, ensure bucket exists, and acquire lease lock."""
         instance = cls(
@@ -93,6 +90,7 @@ class S3Storage(StorageBackend):
             connection_id=connection_id,
             server_id=server_id,
             lease_duration=lease_duration,
+            s3_client_manager=s3_client_manager,
         )
         await instance._ensure_bucket_exists()
 
@@ -105,7 +103,7 @@ class S3Storage(StorageBackend):
         return instance
 
     async def _ensure_bucket_exists(self) -> None:
-        async with self.session.client("s3", **self.s3_client_config) as s3:
+        async with self.s3_manager.get_client() as s3:
             try:
                 await s3.head_bucket(Bucket=self.bucket)
                 logger.debug(f"Bucket '{self.bucket}' exists")
@@ -160,7 +158,7 @@ class S3Storage(StorageBackend):
             return self.dirty_blocks[block_offset]
 
         key = self._get_block_key(block_offset)
-        async with self.session.client("s3", **self.s3_client_config) as s3:
+        async with self.s3_manager.get_client() as s3:
             try:
                 response = await s3.get_object(Bucket=self.bucket, Key=key)
                 async with response["Body"] as stream:
@@ -203,7 +201,7 @@ class S3Storage(StorageBackend):
             num_blocks = len(self.dirty_blocks)
             logger.info(f"Flushing {num_blocks} dirty blocks to S3")
 
-            async with self.session.client("s3", **self.s3_client_config) as s3:
+            async with self.s3_manager.get_client() as s3:
                 for block_offset in list(self.dirty_blocks.keys()):
                     block_data = self.dirty_blocks[block_offset]
                     key = self._get_block_key(block_offset)

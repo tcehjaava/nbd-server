@@ -4,13 +4,12 @@ import logging
 import os
 import socket
 import time
-import uuid
 from typing import Optional
 
-import aioboto3
 from botocore.exceptions import ClientError
 
 from .models import S3Config
+from .s3_client import S3ClientManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,8 @@ class S3LeaseLock:
     """Distributed lease-based lock using S3 conditional writes.
 
     Provides exclusive access to an export across multiple server instances
-    and connections using S3 as the coordination layer.
+    and connections using S3 as the coordination layer. Uses S3ClientManager
+    for connection pooling and asyncio.TaskGroup for task management.
     """
 
     def __init__(
@@ -29,22 +29,18 @@ class S3LeaseLock:
         connection_id: str,
         server_id: str,
         lease_duration: int = 30,
+        s3_client_manager: Optional[S3ClientManager] = None,
     ):
         self.export_name = export_name
         self.bucket = s3_config.bucket
         self.connection_id = connection_id
         self.server_id = server_id
         self.lease_duration = lease_duration
+        self.renew_interval = lease_duration / 2
         self.is_active = False
         self._heartbeat_task: Optional[asyncio.Task] = None
 
-        self.session = aioboto3.Session()
-        self.s3_client_config = {
-            "endpoint_url": s3_config.endpoint_url,
-            "aws_access_key_id": s3_config.access_key,
-            "aws_secret_access_key": s3_config.secret_key,
-            "region_name": s3_config.region,
-        }
+        self.s3_manager = s3_client_manager or S3ClientManager(s3_config)
 
     def _get_lock_key(self) -> str:
         return f"locks/{self.export_name}/lock.json"
@@ -67,7 +63,7 @@ class S3LeaseLock:
         """
         lock_key = self._get_lock_key()
 
-        async with self.session.client("s3", **self.s3_client_config) as s3:
+        async with self.s3_manager.get_client() as s3:
             try:
                 response = await s3.get_object(Bucket=self.bucket, Key=lock_key)
                 body = await response["Body"].read()
@@ -191,22 +187,21 @@ class S3LeaseLock:
     async def _heartbeat_loop(self) -> None:
         """Periodically renew the lock to maintain ownership."""
         lock_key = self._get_lock_key()
-        renew_interval = self.lease_duration / 2
 
         logger.info(
             f"Started heartbeat for '{self.export_name}' "
-            f"(interval={renew_interval}s, lease={self.lease_duration}s)"
+            f"(interval={self.renew_interval}s, lease={self.lease_duration}s)"
         )
 
         try:
             while self.is_active:
-                await asyncio.sleep(renew_interval)
+                await asyncio.sleep(self.renew_interval)
 
                 if not self.is_active:
                     break
 
                 try:
-                    async with self.session.client("s3", **self.s3_client_config) as s3:
+                    async with self.s3_manager.get_client() as s3:
                         await self._renew_lock(s3, lock_key)
                 except Exception as e:
                     logger.error(f"Failed to renew lock for '{self.export_name}': {e}")
@@ -231,7 +226,7 @@ class S3LeaseLock:
         lock_key = self._get_lock_key()
 
         try:
-            async with self.session.client("s3", **self.s3_client_config) as s3:
+            async with self.s3_manager.get_client() as s3:
                 await s3.delete_object(Bucket=self.bucket, Key=lock_key)
             logger.info(
                 f"Released lock for '{self.export_name}' "

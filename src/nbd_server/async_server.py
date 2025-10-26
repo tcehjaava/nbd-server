@@ -1,23 +1,16 @@
 import asyncio
 import logging
 import socket
-import struct
 import uuid
 
-from .async_protocol import Requests, Responses, receive_exactly
 from .async_storage import S3Storage
+from .command_handler import CommandHandler
 from .models import S3Config
+from .protocol_handler import ProtocolHandler
 from .constants import (
     DEFAULT_EXPORT_SIZE,
     DEFAULT_HOST,
     DEFAULT_PORT,
-    NBD_CMD_DISC,
-    NBD_CMD_FLUSH,
-    NBD_CMD_READ,
-    NBD_CMD_WRITE,
-    NBD_OPT_ABORT,
-    NBD_OPT_GO,
-    TRANSMISSION_FLAGS,
     parse_size,
 )
 
@@ -91,26 +84,18 @@ class NBDServer:
         logger.info(f"Connection {connection_id} from {addr}")
 
         storage = None
+        protocol_handler = ProtocolHandler(self.export_size)
 
         try:
             self._enable_tcp_keepalive(writer, connection_id)
 
-            # Handshake phase
-            writer.write(Responses.handshake())
-            await writer.drain()
-            logger.debug(f"Sent handshake: {len(Responses.handshake())} bytes")
+            await protocol_handler.handshake(reader, writer)
+            await protocol_handler.receive_client_flags(reader)
 
-            # Parse client flags
-            flags_data = await receive_exactly(reader, 4)
-            flags = Requests.client_flags(flags_data)
-            logger.debug(f"Received client flags: 0x{flags:08x}")
-
-            # Negotiation phase
-            export_name = await self._handle_negotiation(reader, writer)
+            export_name = await protocol_handler.negotiate_export(reader, writer)
             if export_name is None:
                 return
 
-            # Create storage with connection_id and server_id
             logger.info(f"Creating storage for export '{export_name}' (connection={connection_id})")
             try:
                 storage = await S3Storage.create(
@@ -124,9 +109,9 @@ class NBDServer:
                 logger.error(f"Failed to create storage: {e}")
                 return
 
-            # Transmission phase
             logger.info("Negotiation complete, entering transmission phase")
-            await self._handle_transmission(reader, writer, storage)
+            command_handler = CommandHandler(storage)
+            await command_handler.process_commands(reader, writer)
 
         except ConnectionError as e:
             logger.error(f"Connection error: {e}")
@@ -183,99 +168,3 @@ class NBDServer:
                 f"Connection {connection_id}: Failed to enable TCP keepalive: {e}"
             )
 
-    async def _handle_negotiation(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> str | None:
-        """Handle option negotiation phase, returns export name or None if aborted."""
-        header = await receive_exactly(reader, 16)
-        option_length = struct.unpack(">QII", header)[2]
-        option_data = (
-            await receive_exactly(reader, option_length) if option_length > 0 else b""
-        )
-
-        option, data = Requests.option_request(header, option_data)
-
-        if option == NBD_OPT_GO:
-            export_name_length = struct.unpack(">I", data[:4])[0]
-            export_name = data[4 : 4 + export_name_length].decode("utf-8")
-            logger.info(f"Export name: '{export_name}'")
-
-            # Send info reply
-            writer.write(Responses.info_reply(option, self.export_size, TRANSMISSION_FLAGS))
-            size_mb = self.export_size / (1024 * 1024)
-            logger.debug(
-                f"Sent NBD_REP_INFO: size={size_mb:.0f}MB, flags=0x{TRANSMISSION_FLAGS:04x}"
-            )
-
-            # Send ack reply
-            writer.write(Responses.ack_reply(option))
-            await writer.drain()
-            logger.debug(f"Sent NBD_REP_ACK for option 0x{option:08x}")
-
-            return export_name
-
-        elif option == NBD_OPT_ABORT:
-            logger.info("Client requested abort")
-            return None
-
-        else:
-            logger.warning(f"Unsupported option: 0x{option:08x}")
-            return None
-
-    async def _handle_transmission(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, storage: S3Storage
-    ) -> None:
-        """Handle transmission phase command loop."""
-        while True:
-            cmd_data = await receive_exactly(reader, 28)
-            cmd_type, flags, handle, offset, length = Requests.command(cmd_data)
-            logger.debug(f"Command: type={cmd_type}, offset={offset}, length={length}")
-
-            if cmd_type == NBD_CMD_READ:
-                await self._handle_read(writer, storage, handle, offset, length)
-            elif cmd_type == NBD_CMD_WRITE:
-                await self._handle_write(reader, writer, storage, handle, offset, length)
-            elif cmd_type == NBD_CMD_FLUSH:
-                await self._handle_flush(writer, storage, handle)
-            elif cmd_type == NBD_CMD_DISC:
-                logger.info("Client requested disconnect")
-                break
-            else:
-                logger.warning(f"Unsupported command type {cmd_type} received")
-                writer.write(Responses.simple_reply(1, handle))
-                await writer.drain()
-
-    async def _handle_read(
-        self, writer: asyncio.StreamWriter, storage: S3Storage, handle: int, offset: int, length: int
-    ) -> None:
-        """Handle READ command: read from storage and send data to client."""
-        data = await storage.read(offset, length)
-        writer.write(Responses.simple_reply(0, handle))
-        writer.write(data)
-        await writer.drain()
-        logger.debug(f"Sent READ reply: {length} bytes")
-
-    async def _handle_write(
-        self,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-        storage: S3Storage,
-        handle: int,
-        offset: int,
-        length: int,
-    ) -> None:
-        """Handle WRITE command: receive data from client and write to storage."""
-        write_data = await receive_exactly(reader, length)
-        await storage.write(offset, write_data)
-        writer.write(Responses.simple_reply(0, handle))
-        await writer.drain()
-        logger.debug(f"Processed WRITE: {length} bytes at offset {offset}")
-
-    async def _handle_flush(
-        self, writer: asyncio.StreamWriter, storage: S3Storage, handle: int
-    ) -> None:
-        """Handle FLUSH command: flush storage and send acknowledgment."""
-        await storage.flush()
-        writer.write(Responses.simple_reply(0, handle))
-        await writer.drain()
-        logger.debug("Processed FLUSH")
