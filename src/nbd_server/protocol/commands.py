@@ -9,11 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class TransmissionHandler:
-    """Handles NBD transmission phase commands.
-
-    Separates command processing logic from connection management,
-    making the code more modular and testable.
-    """
+    """Handles NBD transmission phase commands."""
 
     def __init__(self, storage: StorageBackend):
         self.storage = storage
@@ -21,19 +17,10 @@ class TransmissionHandler:
     async def process_commands(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Process NBD commands in transmission phase.
-
-        Args:
-            reader: Stream reader for client connection
-            writer: Stream writer for client connection
-
-        Raises:
-            ConnectionError: If connection is lost
-            ValueError: If protocol error occurs
-        """
+        """Process NBD commands in transmission phase."""
         while True:
             cmd_data = await receive_exactly(reader, 28)
-            cmd_type, flags, handle, offset, length = Requests.command(cmd_data)
+            cmd_type, _flags, handle, offset, length = Requests.command(cmd_data)
             logger.debug(f"Command: type={cmd_type}, offset={offset}, length={length}")
 
             if cmd_type == NBD_CMD_READ:
@@ -52,14 +39,7 @@ class TransmissionHandler:
     async def _handle_read(
         self, writer: asyncio.StreamWriter, handle: int, offset: int, length: int
     ) -> None:
-        """Handle READ command.
-
-        Args:
-            writer: Stream writer for client connection
-            handle: Command handle for response matching
-            offset: Read offset in bytes
-            length: Number of bytes to read
-        """
+        """Handle READ command."""
         try:
             data = await self.storage.read(offset, length)
             writer.write(Responses.simple_reply(0, handle))
@@ -79,15 +59,7 @@ class TransmissionHandler:
         offset: int,
         length: int,
     ) -> None:
-        """Handle WRITE command.
-
-        Args:
-            reader: Stream reader for client connection
-            writer: Stream writer for client connection
-            handle: Command handle for response matching
-            offset: Write offset in bytes
-            length: Number of bytes to write
-        """
+        """Handle WRITE command."""
         try:
             write_data = await receive_exactly(reader, length)
             await self.storage.write(offset, write_data)
@@ -99,12 +71,7 @@ class TransmissionHandler:
             await self._send_error(writer, handle, error_code=5)  # EIO
 
     async def _handle_flush(self, writer: asyncio.StreamWriter, handle: int) -> None:
-        """Handle FLUSH command.
-
-        Args:
-            writer: Stream writer for client connection
-            handle: Command handle for response matching
-        """
+        """Handle FLUSH command."""
         try:
             await self.storage.flush()
             writer.write(Responses.simple_reply(0, handle))
@@ -117,13 +84,7 @@ class TransmissionHandler:
     async def _send_error(
         self, writer: asyncio.StreamWriter, handle: int, error_code: int
     ) -> None:
-        """Send error response to client.
-
-        Args:
-            writer: Stream writer for client connection
-            handle: Command handle for response matching
-            error_code: NBD error code
-        """
+        """Send error response to client."""
         writer.write(Responses.simple_reply(error_code, handle))
         await writer.drain()
         logger.debug(f"Sent error response: code={error_code}, handle={handle}")
