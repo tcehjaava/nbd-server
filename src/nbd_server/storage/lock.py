@@ -15,12 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class LeaseLock:
-    """Distributed lease-based lock using S3 conditional writes.
-
-    Provides exclusive access to an export across multiple server instances
-    and connections using S3 as the coordination layer. Uses ClientManager
-    for connection pooling and asyncio.TaskGroup for task management.
-    """
+    """Distributed lease-based lock using S3 conditional writes for exclusive access to exports."""
 
     def __init__(
         self,
@@ -56,11 +51,11 @@ class LeaseLock:
         }
 
     async def acquire(self) -> bool:
-        """Acquire exclusive lock for the export.
+        """Acquire exclusive lock for the export, returns True if successful."""
+        if self.is_active:
+            logger.debug(f"Lock already active for '{self.export_name}'")
+            return True
 
-        Returns:
-            True if lock acquired successfully, False otherwise
-        """
         lock_key = self._get_lock_key()
 
         async with self.s3_manager.get_client() as s3:
@@ -69,53 +64,30 @@ class LeaseLock:
                 body = await response["Body"].read()
                 existing_lock = json.loads(body)
 
-                if (
-                    existing_lock.get("connection_id") == self.connection_id
-                    and existing_lock.get("server_id") == self.server_id
-                ):
-                    logger.info(
-                        f"Reacquiring our own lock for '{self.export_name}' "
-                        f"(connection={self.connection_id})"
-                    )
-                    await self._renew_lock(s3, lock_key)
+                if time.time() > existing_lock.get("expires_at", 0):
+                    old_etag = response["ETag"].strip('"')
+                    await self._put_lock(s3, lock_key, IfMatch=old_etag)
+                    logger.info(f"Acquired expired lock for '{self.export_name}'")
                     self.is_active = True
                     self._start_heartbeat()
                     return True
 
-                if time.time() > existing_lock.get("expires_at", 0):
-                    logger.warning(
-                        f"Lock expired for '{self.export_name}' "
-                        f"(previous holder: server={existing_lock.get('server_id')}, "
-                        f"connection={existing_lock.get('connection_id')}), acquiring..."
-                    )
-                    old_etag = response["ETag"].strip('"')
-                    await self._steal_lock(s3, lock_key, old_etag)
-                    self.is_active = True
-                    self._start_heartbeat()
-                    return True
-                else:
-                    logger.error(
-                        f"Export '{self.export_name}' is locked by "
-                        f"server={existing_lock.get('server_id')}, "
-                        f"connection={existing_lock.get('connection_id')} "
-                        f"(expires in {existing_lock.get('expires_at') - time.time():.1f}s)"
-                    )
-                    return False
+                expires_in = existing_lock.get("expires_at", 0) - time.time()
+                logger.warning(f"Export '{self.export_name}' locked (expires in {expires_in:.1f}s)")
+                return False
 
             except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code == "NoSuchKey":
-                    logger.info(f"No existing lock for '{self.export_name}', creating new lock")
-                    await self._create_lock(s3, lock_key)
+                if e.response.get("Error", {}).get("Code") == "NoSuchKey":
+                    await self._put_lock(s3, lock_key, IfNoneMatch="*")
+                    logger.info(f"Acquired lock for '{self.export_name}'")
                     self.is_active = True
                     self._start_heartbeat()
                     return True
-                else:
-                    logger.error(f"Error checking lock: {e}")
-                    raise
+                logger.error(f"Error checking lock: {e}")
+                raise
 
-    async def _create_lock(self, s3, lock_key: str) -> None:
-        """Create a new lock using conditional write (If-None-Match)."""
+    async def _put_lock(self, s3, lock_key: str, **conditions) -> None:
+        """Write lock data to S3 with optional conditional checks."""
         lock_data = self._create_lock_data()
 
         try:
@@ -123,61 +95,14 @@ class LeaseLock:
                 Bucket=self.bucket,
                 Key=lock_key,
                 Body=json.dumps(lock_data),
-                IfNoneMatch="*",
-            )
-            logger.info(
-                f"Acquired lock for '{self.export_name}' "
-                f"(server={self.server_id}, connection={self.connection_id})"
+                **conditions,
             )
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "PreconditionFailed":
-                logger.error(
-                    f"Failed to create lock for '{self.export_name}' - "
-                    f"race condition detected"
-                )
+            if e.response.get("Error", {}).get("Code") == "PreconditionFailed":
+                logger.error(f"Race condition detected for '{self.export_name}'")
                 raise
-            else:
-                logger.error(f"Error creating lock: {e}")
-                raise
-
-    async def _steal_lock(self, s3, lock_key: str, old_etag: str) -> None:
-        """Steal an expired lock using conditional write (If-Match)."""
-        lock_data = self._create_lock_data()
-
-        try:
-            await s3.put_object(
-                Bucket=self.bucket,
-                Key=lock_key,
-                Body=json.dumps(lock_data),
-                IfMatch=old_etag,
-            )
-            logger.info(
-                f"Stole expired lock for '{self.export_name}' "
-                f"(server={self.server_id}, connection={self.connection_id})"
-            )
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "PreconditionFailed":
-                logger.error(
-                    f"Failed to steal lock for '{self.export_name}' - "
-                    f"race condition detected"
-                )
-                raise
-            else:
-                logger.error(f"Error stealing lock: {e}")
-                raise
-
-    async def _renew_lock(self, s3, lock_key: str) -> None:
-        """Renew the lock by updating its expiry time."""
-        lock_data = self._create_lock_data()
-
-        await s3.put_object(
-            Bucket=self.bucket,
-            Key=lock_key,
-            Body=json.dumps(lock_data),
-        )
-        logger.debug(f"Renewed lock for '{self.export_name}'")
+            logger.error(f"Error writing lock: {e}")
+            raise
 
     def _start_heartbeat(self) -> None:
         """Start the heartbeat task to periodically renew the lock."""
@@ -190,36 +115,28 @@ class LeaseLock:
         consecutive_failures = 0
         max_failures = 3
 
-        logger.info(
-            f"Started heartbeat for '{self.export_name}' "
-            f"(interval={self.renew_interval}s, lease={self.lease_duration}s)"
-        )
+        logger.info(f"Started heartbeat for '{self.export_name}' (interval={self.renew_interval}s)")
 
         try:
             while self.is_active:
                 await asyncio.sleep(self.renew_interval)
-
                 if not self.is_active:
                     break
 
                 try:
                     async with self.s3_manager.get_client() as s3:
-                        await self._renew_lock(s3, lock_key)
+                        await self._put_lock(s3, lock_key)
                     consecutive_failures = 0
                 except Exception as e:
                     consecutive_failures += 1
                     backoff = min(2 ** (consecutive_failures - 1), 8)
                     logger.warning(
-                        f"Failed to renew lock for '{self.export_name}' "
-                        f"(attempt {consecutive_failures}/{max_failures}): {e}. "
-                        f"Retrying in {backoff}s..."
+                        f"Lock renewal failed (attempt {consecutive_failures}/{max_failures}): {e}. "
+                        f"Retrying in {backoff}s"
                     )
 
                     if consecutive_failures >= max_failures:
-                        logger.error(
-                            f"Max consecutive failures ({max_failures}) reached for '{self.export_name}'. "
-                            f"Terminating heartbeat."
-                        )
+                        logger.error(f"Max failures reached for '{self.export_name}', terminating heartbeat")
                         break
 
                     await asyncio.sleep(backoff)
@@ -228,6 +145,10 @@ class LeaseLock:
             logger.info(f"Heartbeat cancelled for '{self.export_name}'")
         except Exception as e:
             logger.exception(f"Heartbeat error for '{self.export_name}': {e}")
+        finally:
+            if self.is_active:
+                logger.critical(f"Heartbeat terminated unexpectedly for '{self.export_name}', lock no longer held")
+                self.is_active = False
 
     async def release(self) -> None:
         """Release the lock."""
@@ -240,17 +161,12 @@ class LeaseLock:
             except asyncio.CancelledError:
                 pass
 
-        lock_key = self._get_lock_key()
-
         try:
             async with self.s3_manager.get_client() as s3:
-                await s3.delete_object(Bucket=self.bucket, Key=lock_key)
-            logger.info(
-                f"Released lock for '{self.export_name}' "
-                f"(server={self.server_id}, connection={self.connection_id})"
-            )
+                await s3.delete_object(Bucket=self.bucket, Key=self._get_lock_key())
+            logger.info(f"Released lock for '{self.export_name}'")
         except ClientError as e:
-            logger.error(f"Error releasing lock for '{self.export_name}': {e}")
+            logger.error(f"Error releasing lock: {e}")
 
     async def __aenter__(self):
         if not await self.acquire():
