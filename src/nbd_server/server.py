@@ -89,7 +89,7 @@ class NBDServer:
         try:
             self._enable_tcp_keepalive(writer, connection_id)
 
-            await protocol_handler.handshake(reader, writer)
+            await protocol_handler.handshake(writer)
             await protocol_handler.receive_client_flags(reader)
 
             export_name = await protocol_handler.negotiate_export(reader, writer)

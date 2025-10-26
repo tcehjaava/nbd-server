@@ -10,40 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 class NegotiationHandler:
-    """Handles NBD protocol negotiation phase.
-
-    Separates protocol-specific logic from connection management,
-    making the code more modular and easier to test.
-    """
+    """Handles NBD protocol negotiation phase."""
 
     def __init__(self, export_size: int):
         self.export_size = export_size
 
-    async def handshake(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        """Send initial handshake to client.
-
-        Args:
-            reader: Stream reader for client connection
-            writer: Stream writer for client connection
-        """
+    async def handshake(self, writer: asyncio.StreamWriter) -> None:
+        """Send initial handshake to client."""
         writer.write(Responses.handshake())
         await writer.drain()
         logger.debug(f"Sent handshake: {len(Responses.handshake())} bytes")
 
     async def receive_client_flags(self, reader: asyncio.StreamReader) -> int:
-        """Receive and parse client flags.
-
-        Args:
-            reader: Stream reader for client connection
-
-        Returns:
-            Client flags as integer
-
-        Raises:
-            ConnectionError: If unable to read flags
-        """
+        """Receive and parse client flags."""
         flags_data = await receive_exactly(reader, 4)
         flags = Requests.client_flags(flags_data)
         logger.debug(f"Received client flags: 0x{flags:08x}")
@@ -52,18 +31,7 @@ class NegotiationHandler:
     async def negotiate_export(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> Optional[str]:
-        """Handle option negotiation phase.
-
-        Args:
-            reader: Stream reader for client connection
-            writer: Stream writer for client connection
-
-        Returns:
-            Export name if negotiation successful, None if aborted
-
-        Raises:
-            ValueError: If protocol error occurs
-        """
+        """Handle option negotiation phase."""
         header = await receive_exactly(reader, 16)
         option_length = struct.unpack(">QII", header)[2]
         option_data = (
@@ -82,15 +50,7 @@ class NegotiationHandler:
             return None
 
     async def _handle_go_option(self, writer: asyncio.StreamWriter, data: bytes) -> str:
-        """Handle NBD_OPT_GO option.
-
-        Args:
-            writer: Stream writer for client connection
-            data: Option data containing export name
-
-        Returns:
-            Export name extracted from option data
-        """
+        """Handle NBD_OPT_GO option."""
         export_name_length = struct.unpack(">I", data[:4])[0]
         export_name = data[4 : 4 + export_name_length].decode("utf-8")
         logger.info(f"Export name: '{export_name}'")
