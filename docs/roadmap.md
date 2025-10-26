@@ -5,62 +5,57 @@ Start with the simplest working implementation, then incrementally improve. No a
 
 ---
 
-## **Phase 1: Minimal Working NBD Server**
+## **Phase 1: Minimal Working NBD Server** ✅ COMPLETE
 **Goal**: Get a basic NBD server accepting connections and responding to read/write/flush
 
-**Deliverables**:
-- Single file (`server.py`) with hardcoded protocol handling
-- Parse handshake, NBD_OPT_GO, basic request/response
-- In-memory dict storage (offset → bytes)
-- Synchronous socket handling (one client)
-- Make it work with `nbd-client` and mount a filesystem
+**Completed**:
+- ✅ NBD protocol implementation (handshake, NBD_OPT_GO, NBD_OPT_ABORT)
+- ✅ Command handlers (READ, WRITE, FLUSH, DISC)
+- ✅ Synchronous socket handling
+- ✅ Works with `nbd-client` and filesystem mount
+- ✅ Comprehensive test coverage
 
-**Why first**: Prove we understand the protocol and can connect real clients
-**What to skip**: Abstractions, multiple exports, async, perfect error handling
+**Status**: Fully implemented and tested
 
 ---
 
-## **Phase 2: Add S3 Persistence**
+## **Phase 2: Add S3 Persistence** ✅ COMPLETE
 **Goal**: Replace in-memory dict with S3 storage (boto3)
 
-**Deliverables**:
-- Replace dict with S3 PutObject/GetObject calls
-- Simple key structure: `blocks/{export_name}/{block_offset}`
-- Fixed block size (e.g., 4KB blocks)
-- Proper flush implementation (ensure S3 writes complete)
-- Test persistence (restart server, data survives)
+**Completed**:
+- ✅ S3Storage backend with boto3
+- ✅ Block-based storage (128KB blocks)
+- ✅ Key structure: `blocks/{export_name}/{block_offset}`
+- ✅ Proper flush semantics (dirty block buffering)
+- ✅ Data persists across server restarts
+- ✅ Integration with MinIO
+- ✅ Unit and integration tests
 
-**Why second**: Core requirement - S3 backend, still simple and monolithic
-**What to skip**: Content-addressable storage, caching, abstractions
-
----
-
-## **Phase 3: Multi-Export Support**
-**Goal**: Support multiple independent virtual disks
-
-**Deliverables**:
-- Accept different export names in handshake
-- Store export metadata in S3 (size, created timestamp)
-- Namespace S3 keys by export name
-- Handle multiple exports from one server instance
-
-**Why third**: Core requirement, natural extension of Phase 2
-**What to skip**: Don't refactor storage layer yet
+**Status**: Fully implemented and tested
 
 ---
 
-## **Phase 4: Refactor to Async + Multi-Client**
-**Goal**: Support concurrent clients with asyncio
+## **Phase 3+4: Asyncio + Multi-Export Support** 🚧 IN PROGRESS
+**Goal**: Support concurrent clients and multiple independent virtual disks using asyncio
+
+**Rationale**: Combining Phases 3 and 4 because:
+- Multi-export requires concurrent connection handling
+- Asyncio naturally handles per-connection local storage
+- More efficient to implement together than sequentially
+- Avoids intermediate refactoring
 
 **Deliverables**:
-- Refactor socket handling to asyncio
-- Use aioboto3 for S3 operations
-- Support multiple concurrent client connections
-- Extract protocol parsing to functions (now we know what we need)
-- Basic tests for concurrent access
+- Refactor server to asyncio (asyncio.start_server)
+- Refactor storage to aioboto3 (async S3 operations)
+- Support arbitrary export names dynamically
+- Each connection creates storage for requested export
+- Multiple concurrent clients with different exports
+- S3 namespace isolation per export
+- Comprehensive async tests
 
-**Why fourth**: Now we have working code to refactor, and we know what needs to be async
-**What to skip**: Perfect abstractions - just make existing code async
+**See detailed plan**: `docs/asyncio-multi-export-plan.md`
+
+**Status**: Planning complete, implementation in progress
 
 ---
 
@@ -182,15 +177,18 @@ Start with the simplest working implementation, then incrementally improve. No a
 
 ## Timeline Estimate
 
-| Phase | Time | Cumulative |
-|-------|------|------------|
-| 1-3: Core (NBD + S3 + Multi-export) | ~2-3 days | Minimum viable product ✅ |
-| 4: Async refactor | ~1 day | Production-ready basics |
-| 5: COW | ~2 days | Advanced feature |
-| 6-7: Caching | ~1-2 days | Performance |
-| 8-10: Locking + Polish + Tests | ~2-3 days | Production complete |
+| Phase | Time | Status |
+|-------|------|--------|
+| 1: NBD Protocol | ~1 day | ✅ Complete |
+| 2: S3 Persistence | ~1 day | ✅ Complete |
+| 3+4: Asyncio + Multi-export | ~10-11 hours | 🚧 In Progress |
+| 5: COW | ~2 days | ⏳ Future |
+| 6-7: Caching | ~1-2 days | ⏳ Future |
+| 8-10: Locking + Polish + Tests | ~2-3 days | ⏳ Future |
 
-**Total: ~8-10 days of focused work**
+**Current Status**: Core requirements (Phases 1-2) complete. Working on asyncio + multi-export.
+
+**After Phase 3+4**: All 5 core requirements will be complete, production-ready server.
 
 ## Testing Per Phase
 - Manual testing with `nbd-client` after each phase

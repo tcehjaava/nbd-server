@@ -9,6 +9,8 @@ Network Block Device (NBD) server implementation with S3-compatible storage back
 - ✅ **Block-based Storage**: Efficient 128KB block size with sparse storage support
 - ✅ **Write Buffering**: Dirty block caching with explicit flush semantics
 - ✅ **Cloud-Native**: Configuration via CLI arguments or environment variables
+- 🚧 **Concurrent Connections**: Asyncio-based architecture for multiple simultaneous clients (in progress)
+- 🚧 **Multi-Export Support**: Arbitrary virtual disk names with S3 namespace isolation (in progress)
 
 ## Prerequisites
 
@@ -338,13 +340,15 @@ See `docs/roadmap.md` for the full development roadmap. Current status:
 
 - ✅ Phase 1: Minimal working NBD server
 - ✅ Phase 2: S3 persistence
-- 🔲 Phase 3: Multi-export support
-- 🔲 Phase 4: Async I/O for concurrent clients
+- 🚧 Phase 3+4: Asyncio + Multi-export support (in progress)
+  - See `docs/asyncio-multi-export-plan.md` for detailed implementation plan
 - 🔲 Phase 5: Content-addressable storage + Copy-on-Write
 - 🔲 Phase 6-7: Read caching and write buffering optimization
 - 🔲 Phase 8: Distributed locking
 - 🔲 Phase 9: Production hardening
 - 🔲 Phase 10: Comprehensive testing
+
+**Note**: Phases 3 and 4 are being implemented together for efficiency. Once complete, the server will support multiple concurrent clients with arbitrary export names (virtual disks).
 
 ## Requirements
 
