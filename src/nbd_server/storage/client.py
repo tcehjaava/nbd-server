@@ -12,12 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class ClientManager:
-    """Centralized client manager with connection pooling and reuse.
-
-    Provides a shared aioboto3 session and client management across
-    multiple components (storage, lease lock, etc.) to avoid duplicate
-    session creation and improve resource utilization.
-    """
+    """Centralized client manager with connection pooling and reuse for S3 operations."""
 
     def __init__(self, s3_config: S3Config) -> None:
         self.s3_config = s3_config
@@ -47,38 +42,12 @@ class ClientManager:
 
     @asynccontextmanager
     async def get_client(self) -> AsyncGenerator[BaseClient, None]:
-        """Get an S3 client as an async context manager.
-
-        Yields:
-            BaseClient: An aioboto3 S3 client instance
-
-        Usage:
-            async with manager.get_client() as s3:
-                await s3.get_object(Bucket=bucket, Key=key)
-        """
+        """Get an S3 client as an async context manager."""
         async with self.session.client("s3", **self._client_config) as client:
             yield client
 
-    @asynccontextmanager
-    async def get_resource(self) -> AsyncGenerator:
-        """Get an S3 resource as an async context manager.
-
-        Yields:
-            S3 resource instance for higher-level operations
-
-        Usage:
-            async with manager.get_resource() as s3:
-                bucket = await s3.Bucket('my-bucket')
-        """
-        async with self.session.resource("s3", **self._client_config) as resource:
-            yield resource
-
     async def close(self) -> None:
-        """Cleanup resources if needed.
-
-        aioboto3 sessions don't require explicit cleanup, but this method
-        provides a hook for future resource management needs.
-        """
+        """Cleanup resources if needed."""
         logger.debug("ClientManager closed")
 
     async def __aenter__(self):
