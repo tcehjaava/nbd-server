@@ -1,34 +1,15 @@
 import logging
-from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Optional
 
 import aiorwlock
 from botocore.exceptions import ClientError
 
-from .lease_lock import S3LeaseLock
-from .models import S3Config
-from .s3_client import S3ClientManager
+from .base import StorageBackend
+from .client import S3ClientManager
+from .lock import S3LeaseLock
+from ..models import S3Config
 
 logger = logging.getLogger(__name__)
-
-
-class StorageBackend(ABC):
-    """Abstract base class for storage backends."""
-
-    @abstractmethod
-    async def read(self, offset: int, length: int) -> bytes:
-        """Read data from storage at offset, returns zero-filled bytes for unwritten regions."""
-        pass
-
-    @abstractmethod
-    async def write(self, offset: int, data: bytes) -> None:
-        """Write data to storage at offset."""
-        pass
-
-    @abstractmethod
-    async def flush(self) -> None:
-        """Flush any pending writes to ensure data persistence."""
-        pass
 
 
 class S3Storage(StorageBackend):

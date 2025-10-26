@@ -1,9 +1,9 @@
 import asyncio
 import logging
 
-from .async_protocol import Requests, Responses, receive_exactly
-from .async_storage import StorageBackend
-from .constants import NBD_CMD_DISC, NBD_CMD_FLUSH, NBD_CMD_READ, NBD_CMD_WRITE
+from .messages import Requests, Responses, receive_exactly
+from ..storage.base import StorageBackend
+from ..constants import NBD_CMD_DISC, NBD_CMD_FLUSH, NBD_CMD_READ, NBD_CMD_WRITE
 
 logger = logging.getLogger(__name__)
 

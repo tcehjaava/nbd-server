@@ -3,8 +3,8 @@ import logging
 import struct
 from typing import Optional
 
-from .async_protocol import Requests, Responses, receive_exactly
-from .constants import NBD_OPT_ABORT, NBD_OPT_GO, TRANSMISSION_FLAGS
+from .messages import Requests, Responses, receive_exactly
+from ..constants import NBD_OPT_ABORT, NBD_OPT_GO, TRANSMISSION_FLAGS
 
 logger = logging.getLogger(__name__)
 

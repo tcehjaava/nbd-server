@@ -6,7 +6,7 @@ import aioboto3
 from botocore.client import BaseClient
 from botocore.config import Config
 
-from .models import S3Config
+from ..models import S3Config
 
 logger = logging.getLogger(__name__)
 

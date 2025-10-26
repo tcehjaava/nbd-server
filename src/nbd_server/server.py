@@ -3,10 +3,10 @@ import logging
 import socket
 import uuid
 
-from .async_storage import S3Storage
-from .command_handler import CommandHandler
+from .storage.s3 import S3Storage
+from .protocol.commands import CommandHandler
 from .models import S3Config
-from .protocol_handler import ProtocolHandler
+from .protocol.negotiation import ProtocolHandler
 from .constants import (
     DEFAULT_EXPORT_SIZE,
     DEFAULT_HOST,
