@@ -1,4 +1,4 @@
-import socket
+import asyncio
 import struct
 
 from .constants import (
@@ -14,14 +14,9 @@ from .constants import (
 )
 
 
-def recv_exactly(sock: socket.socket, num_bytes: int) -> bytes:
-    """Receive exactly the specified number of bytes from socket, blocking until complete."""
-    data = b""
-    while len(data) < num_bytes:
-        chunk = sock.recv(num_bytes - len(data))
-        if not chunk:
-            raise ConnectionError("Connection closed while receiving data")
-        data += chunk
+async def receive_exactly(reader: asyncio.StreamReader, num_bytes: int) -> bytes:
+    """Receive exactly the specified number of bytes from async stream reader."""
+    data = await reader.readexactly(num_bytes)
     return data
 
 
