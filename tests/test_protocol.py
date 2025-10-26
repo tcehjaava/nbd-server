@@ -1,6 +1,9 @@
+import asyncio
 import socket
 import struct
 import unittest
+
+import pytest
 
 from nbd_server.constants import (
     IHAVEOPT,
@@ -13,7 +16,7 @@ from nbd_server.constants import (
     NBD_SIMPLE_REPLY_MAGIC,
     NBDMAGIC,
 )
-from nbd_server.protocol import Requests, Responses, recv_exactly
+from nbd_server.protocol import Requests, Responses, recv_exactly, receive_exactly
 
 
 class TestRecvExactly(unittest.TestCase):
@@ -185,6 +188,40 @@ class TestRequests(unittest.TestCase):
             Requests.command(data)
 
         self.assertIn("Invalid request magic", str(context.exception))
+
+
+@pytest.mark.asyncio
+async def test_receive_exactly_single_chunk():
+    reader = asyncio.StreamReader()
+    test_data = b"hello"
+    reader.feed_data(test_data)
+    reader.feed_eof()
+
+    result = await receive_exactly(reader, 5)
+
+    assert result == test_data
+
+
+@pytest.mark.asyncio
+async def test_receive_exactly_multiple_chunks():
+    reader = asyncio.StreamReader()
+    test_data = b"The quick brown fox jumps over the lazy dog!"
+    reader.feed_data(test_data)
+    reader.feed_eof()
+
+    result = await receive_exactly(reader, len(test_data))
+
+    assert result == test_data
+
+
+@pytest.mark.asyncio
+async def test_receive_exactly_connection_closed():
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"hel")
+    reader.feed_eof()
+
+    with pytest.raises(asyncio.IncompleteReadError):
+        await receive_exactly(reader, 5)
 
 
 if __name__ == "__main__":
