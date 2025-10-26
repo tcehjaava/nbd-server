@@ -5,8 +5,8 @@ import aiorwlock
 from botocore.exceptions import ClientError
 
 from .base import StorageBackend
-from .client import S3ClientManager
-from .lock import S3LeaseLock
+from .client import ClientManager
+from .lock import LeaseLock
 from ..models import S3Config
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class S3Storage(StorageBackend):
         connection_id: str,
         server_id: str,
         lease_duration: int = 30,
-        s3_client_manager: Optional[S3ClientManager] = None,
+        s3_client_manager: Optional[ClientManager] = None,
     ) -> None:
         self.export_name = export_name
         self.s3_config_model = s3_config
@@ -34,11 +34,11 @@ class S3Storage(StorageBackend):
         self.dirty_blocks: dict[int, bytes] = {}
 
         self.rwlock = aiorwlock.RWLock()
-        self.lease_lock: Optional[S3LeaseLock] = None
+        self.lease_lock: Optional[LeaseLock] = None
 
-        self.s3_manager = s3_client_manager or S3ClientManager(s3_config)
+        self.s3_manager = s3_client_manager or ClientManager(s3_config)
 
-        self.lease_lock = S3LeaseLock(
+        self.lease_lock = LeaseLock(
             export_name=export_name,
             s3_config=s3_config,
             connection_id=connection_id,
@@ -61,7 +61,7 @@ class S3Storage(StorageBackend):
         connection_id: str,
         server_id: str,
         lease_duration: int = 30,
-        s3_client_manager: Optional[S3ClientManager] = None,
+        s3_client_manager: Optional[ClientManager] = None,
     ) -> "S3Storage":
         """Create S3Storage instance, ensure bucket exists, and acquire lease lock."""
         instance = cls(

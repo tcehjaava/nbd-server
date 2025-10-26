@@ -8,7 +8,7 @@ from ..constants import NBD_CMD_DISC, NBD_CMD_FLUSH, NBD_CMD_READ, NBD_CMD_WRITE
 logger = logging.getLogger(__name__)
 
 
-class CommandHandler:
+class TransmissionHandler:
     """Handles NBD transmission phase commands.
 
     Separates command processing logic from connection management,

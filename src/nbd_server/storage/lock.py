@@ -9,16 +9,16 @@ from typing import Optional
 from botocore.exceptions import ClientError
 
 from ..models import S3Config
-from .client import S3ClientManager
+from .client import ClientManager
 
 logger = logging.getLogger(__name__)
 
 
-class S3LeaseLock:
+class LeaseLock:
     """Distributed lease-based lock using S3 conditional writes.
 
     Provides exclusive access to an export across multiple server instances
-    and connections using S3 as the coordination layer. Uses S3ClientManager
+    and connections using S3 as the coordination layer. Uses ClientManager
     for connection pooling and asyncio.TaskGroup for task management.
     """
 
@@ -29,7 +29,7 @@ class S3LeaseLock:
         connection_id: str,
         server_id: str,
         lease_duration: int = 30,
-        s3_client_manager: Optional[S3ClientManager] = None,
+        s3_client_manager: Optional[ClientManager] = None,
     ):
         self.export_name = export_name
         self.bucket = s3_config.bucket
@@ -40,7 +40,7 @@ class S3LeaseLock:
         self.is_active = False
         self._heartbeat_task: Optional[asyncio.Task] = None
 
-        self.s3_manager = s3_client_manager or S3ClientManager(s3_config)
+        self.s3_manager = s3_client_manager or ClientManager(s3_config)
 
     def _get_lock_key(self) -> str:
         return f"locks/{self.export_name}/lock.json"

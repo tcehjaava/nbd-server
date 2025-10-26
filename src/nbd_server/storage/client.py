@@ -11,8 +11,8 @@ from ..models import S3Config
 logger = logging.getLogger(__name__)
 
 
-class S3ClientManager:
-    """Centralized S3 client manager with connection pooling and reuse.
+class ClientManager:
+    """Centralized client manager with connection pooling and reuse.
 
     Provides a shared aioboto3 session and client management across
     multiple components (storage, lease lock, etc.) to avoid duplicate
@@ -40,7 +40,7 @@ class S3ClientManager:
             "config": self._boto_config,
         }
         logger.debug(
-            f"S3ClientManager initialized: endpoint={s3_config.endpoint_url}, "
+            f"ClientManager initialized: endpoint={s3_config.endpoint_url}, "
             f"region={s3_config.region}, bucket={s3_config.bucket}, "
             f"retry=adaptive(5), timeout=5s/60s"
         )
@@ -79,7 +79,7 @@ class S3ClientManager:
         aioboto3 sessions don't require explicit cleanup, but this method
         provides a hook for future resource management needs.
         """
-        logger.debug("S3ClientManager closed")
+        logger.debug("ClientManager closed")
 
     async def __aenter__(self):
         return self

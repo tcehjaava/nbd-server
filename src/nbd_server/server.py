@@ -4,9 +4,9 @@ import socket
 import uuid
 
 from .storage.s3 import S3Storage
-from .protocol.commands import CommandHandler
+from .protocol.commands import TransmissionHandler
 from .models import S3Config
-from .protocol.negotiation import ProtocolHandler
+from .protocol.negotiation import NegotiationHandler
 from .constants import (
     DEFAULT_EXPORT_SIZE,
     DEFAULT_HOST,
@@ -84,7 +84,7 @@ class NBDServer:
         logger.info(f"Connection {connection_id} from {addr}")
 
         storage = None
-        protocol_handler = ProtocolHandler(self.export_size)
+        protocol_handler = NegotiationHandler(self.export_size)
 
         try:
             self._enable_tcp_keepalive(writer, connection_id)
@@ -110,7 +110,7 @@ class NBDServer:
                 return
 
             logger.info("Negotiation complete, entering transmission phase")
-            command_handler = CommandHandler(storage)
+            command_handler = TransmissionHandler(storage)
             await command_handler.process_commands(reader, writer)
 
         except ConnectionError as e:

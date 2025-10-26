@@ -9,7 +9,7 @@ from ..constants import NBD_OPT_ABORT, NBD_OPT_GO, TRANSMISSION_FLAGS
 logger = logging.getLogger(__name__)
 
 
-class ProtocolHandler:
+class NegotiationHandler:
     """Handles NBD protocol negotiation phase.
 
     Separates protocol-specific logic from connection management,
