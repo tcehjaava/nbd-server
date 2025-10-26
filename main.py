@@ -7,7 +7,7 @@ import sys
 
 from dotenv import load_dotenv
 
-from src.nbd_server import NBDServer, S3Storage
+from src.nbd_server.legacy import NBDServer, S3Storage
 from src.nbd_server.constants import (
     DEFAULT_BLOCK_SIZE,
     DEFAULT_EXPORT_SIZE,

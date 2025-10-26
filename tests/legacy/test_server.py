@@ -26,8 +26,8 @@ from nbd_server.constants import (
     NBD_SIMPLE_REPLY_MAGIC,
     NBDMAGIC,
 )
-from nbd_server.server import NBDServer
-from nbd_server.storage import S3Storage
+from nbd_server.legacy.server import NBDServer
+from nbd_server.legacy.storage import S3Storage
 
 NBD_FLAG_C_FIXED_NEWSTYLE = 0x00000001
 DEFAULT_TEST_BLOCK_SIZE = 131072

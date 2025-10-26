@@ -13,7 +13,7 @@ from nbd_server.constants import (
     NBD_SIMPLE_REPLY_MAGIC,
     NBDMAGIC,
 )
-from nbd_server.protocol import Requests, Responses, recv_exactly
+from nbd_server.legacy.protocol import Requests, Responses, recv_exactly
 
 
 class TestRecvExactly(unittest.TestCase):

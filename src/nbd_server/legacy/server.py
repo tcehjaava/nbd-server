@@ -2,7 +2,7 @@ import logging
 import socket
 import struct
 
-from .constants import (
+from ..constants import (
     DEFAULT_EXPORT_SIZE,
     DEFAULT_HOST,
     DEFAULT_PORT,

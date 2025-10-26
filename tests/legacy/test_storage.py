@@ -9,7 +9,7 @@ from nbd_server.constants import (
     DEFAULT_S3_REGION,
     DEFAULT_S3_SECRET_KEY,
 )
-from nbd_server.storage import S3Storage
+from nbd_server.legacy.storage import S3Storage
 
 DEFAULT_TEST_BLOCK_SIZE = 131072  # 128KB
 

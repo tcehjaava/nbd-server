@@ -1,7 +1,7 @@
 import socket
 import struct
 
-from .constants import (
+from ..constants import (
     IHAVEOPT,
     NBD_FLAG_FIXED_NEWSTYLE,
     NBD_INFO_EXPORT,
