@@ -98,8 +98,9 @@ class LeaseLock:
                 **conditions,
             )
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "PreconditionFailed":
-                logger.error(f"Race condition detected for '{self.export_name}'")
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code in ("PreconditionFailed", "ConditionalRequestConflict"):
+                logger.error(f"Race condition detected for '{self.export_name}': {error_code}")
                 raise
             logger.error(f"Error writing lock: {e}")
             raise
