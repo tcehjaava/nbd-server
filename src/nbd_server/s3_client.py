@@ -4,6 +4,7 @@ from typing import AsyncGenerator, Optional
 
 import aioboto3
 from botocore.client import BaseClient
+from botocore.config import Config
 
 from .models import S3Config
 
@@ -21,15 +22,27 @@ class S3ClientManager:
     def __init__(self, s3_config: S3Config) -> None:
         self.s3_config = s3_config
         self.session = aioboto3.Session()
+
+        self._boto_config = Config(
+            retries={
+                'max_attempts': 5,
+                'mode': 'adaptive'
+            },
+            connect_timeout=5,
+            read_timeout=60
+        )
+
         self._client_config = {
             "endpoint_url": s3_config.endpoint_url,
             "aws_access_key_id": s3_config.access_key,
             "aws_secret_access_key": s3_config.secret_key,
             "region_name": s3_config.region,
+            "config": self._boto_config,
         }
         logger.debug(
             f"S3ClientManager initialized: endpoint={s3_config.endpoint_url}, "
-            f"region={s3_config.region}, bucket={s3_config.bucket}"
+            f"region={s3_config.region}, bucket={s3_config.bucket}, "
+            f"retry=adaptive(5), timeout=5s/60s"
         )
 
     @asynccontextmanager

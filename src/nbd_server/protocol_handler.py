@@ -96,6 +96,7 @@ class ProtocolHandler:
         logger.info(f"Export name: '{export_name}'")
 
         writer.write(Responses.info_reply(NBD_OPT_GO, self.export_size, TRANSMISSION_FLAGS))
+        await writer.drain()
         size_mb = self.export_size / (1024 * 1024)
         logger.debug(f"Sent NBD_REP_INFO: size={size_mb:.0f}MB, flags=0x{TRANSMISSION_FLAGS:04x}")
 

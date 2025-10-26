@@ -185,8 +185,10 @@ class S3LeaseLock:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def _heartbeat_loop(self) -> None:
-        """Periodically renew the lock to maintain ownership."""
+        """Periodically renew the lock to maintain ownership with automatic retry on transient errors."""
         lock_key = self._get_lock_key()
+        consecutive_failures = 0
+        max_failures = 3
 
         logger.info(
             f"Started heartbeat for '{self.export_name}' "
@@ -203,9 +205,24 @@ class S3LeaseLock:
                 try:
                     async with self.s3_manager.get_client() as s3:
                         await self._renew_lock(s3, lock_key)
+                    consecutive_failures = 0
                 except Exception as e:
-                    logger.error(f"Failed to renew lock for '{self.export_name}': {e}")
-                    break
+                    consecutive_failures += 1
+                    backoff = min(2 ** (consecutive_failures - 1), 8)
+                    logger.warning(
+                        f"Failed to renew lock for '{self.export_name}' "
+                        f"(attempt {consecutive_failures}/{max_failures}): {e}. "
+                        f"Retrying in {backoff}s..."
+                    )
+
+                    if consecutive_failures >= max_failures:
+                        logger.error(
+                            f"Max consecutive failures ({max_failures}) reached for '{self.export_name}'. "
+                            f"Terminating heartbeat."
+                        )
+                        break
+
+                    await asyncio.sleep(backoff)
 
         except asyncio.CancelledError:
             logger.info(f"Heartbeat cancelled for '{self.export_name}'")

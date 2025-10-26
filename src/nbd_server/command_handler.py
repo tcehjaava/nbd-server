@@ -63,6 +63,7 @@ class CommandHandler:
         try:
             data = await self.storage.read(offset, length)
             writer.write(Responses.simple_reply(0, handle))
+            await writer.drain()
             writer.write(data)
             await writer.drain()
             logger.debug(f"Sent READ reply: {length} bytes")
