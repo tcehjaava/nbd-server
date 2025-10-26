@@ -243,6 +243,113 @@ class TestLeaseLock(unittest.IsolatedAsyncioTestCase):
         finally:
             await first_lock.release()
 
+    async def test_release_deletes_lock_from_s3(self):
+        export_name = "test-export-release"
+        connection_id = "conn-123"
+        server_id = "server-456"
+        lease_duration = 30
+
+        lock = LeaseLock(
+            export_name=export_name,
+            s3_config=self.s3_config,
+            connection_id=connection_id,
+            server_id=server_id,
+            lease_duration=lease_duration
+        )
+
+        result = await lock.acquire()
+        self.assertTrue(result)
+        self.assertTrue(lock.is_active)
+
+        async with self.client_manager.get_client() as s3:
+            response = await s3.get_object(Bucket=self.s3_config.bucket, Key=lock._get_lock_key())
+            lock_data = json.loads(await response["Body"].read())
+            self.assertEqual(lock_data["connection_id"], connection_id)
+            self.assertEqual(lock_data["server_id"], server_id)
+
+        await lock.release()
+
+        self.assertFalse(lock.is_active)
+
+        async with self.client_manager.get_client() as s3:
+            with self.assertRaises(ClientError) as context:
+                await s3.get_object(Bucket=self.s3_config.bucket, Key=lock._get_lock_key())
+            self.assertEqual(context.exception.response["Error"]["Code"], "NoSuchKey")
+
+    async def test_lock_as_context_manager(self):
+        export_name = "test-export-context-manager"
+        connection_id = "conn-789"
+        server_id = "server-012"
+        lease_duration = 30
+
+        lock = LeaseLock(
+            export_name=export_name,
+            s3_config=self.s3_config,
+            connection_id=connection_id,
+            server_id=server_id,
+            lease_duration=lease_duration
+        )
+
+        self.assertFalse(lock.is_active)
+
+        async with lock:
+            self.assertTrue(lock.is_active)
+
+            async with self.client_manager.get_client() as s3:
+                response = await s3.get_object(Bucket=self.s3_config.bucket, Key=lock._get_lock_key())
+                lock_data = json.loads(await response["Body"].read())
+                self.assertEqual(lock_data["connection_id"], connection_id)
+                self.assertEqual(lock_data["server_id"], server_id)
+                self.assertIn("timestamp", lock_data)
+                self.assertIn("expires_at", lock_data)
+                self.assertIn("hostname", lock_data)
+                self.assertIn("pid", lock_data)
+
+        self.assertFalse(lock.is_active)
+
+        async with self.client_manager.get_client() as s3:
+            with self.assertRaises(ClientError) as context:
+                await s3.get_object(Bucket=self.s3_config.bucket, Key=lock._get_lock_key())
+            self.assertEqual(context.exception.response["Error"]["Code"], "NoSuchKey")
+
+    async def test_context_manager_raises_when_lock_unavailable(self):
+        export_name = "test-export-context-manager-unavailable"
+        first_connection_id = "conn-first"
+        second_connection_id = "conn-second"
+        server_id = "server-345"
+        lease_duration = 30
+
+        first_lock = LeaseLock(
+            export_name=export_name,
+            s3_config=self.s3_config,
+            connection_id=first_connection_id,
+            server_id=server_id,
+            lease_duration=lease_duration
+        )
+
+        second_lock = LeaseLock(
+            export_name=export_name,
+            s3_config=self.s3_config,
+            connection_id=second_connection_id,
+            server_id=server_id,
+            lease_duration=lease_duration
+        )
+
+        try:
+            async with first_lock:
+                self.assertTrue(first_lock.is_active)
+
+                with self.assertRaises(RuntimeError) as context:
+                    async with second_lock:
+                        pass
+
+                self.assertIn("Failed to acquire lock", str(context.exception))
+                self.assertFalse(second_lock.is_active)
+
+        finally:
+            if first_lock.is_active:
+                await first_lock.release()
+
 
 if __name__ == "__main__":
     unittest.main()
