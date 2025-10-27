@@ -73,13 +73,14 @@ class S3Storage(StorageBackend):
             lease_duration=lease_duration,
             s3_client_manager=s3_client_manager,
         )
-        await instance._ensure_bucket_exists()
 
         if not await instance.lease_lock.acquire():
             raise RuntimeError(
                 f"Failed to acquire lease lock for export '{export_name}' "
                 f"- export is already in use by another connection"
             )
+
+        await instance._ensure_bucket_exists()
 
         return instance
 
@@ -111,11 +112,22 @@ class S3Storage(StorageBackend):
 
         Yields tuples of (block_offset, offset_in_block, chunk_size) for each block.
         """
+        # Operations may span multiple blocks, so we loop until we've processed all bytes
         bytes_processed = 0
         while bytes_processed < length:
+            # Calculate the absolute byte position we're currently processing
             current_offset = offset + bytes_processed
+
+            # Find which block contains this byte (block-aligned offset)
             block_offset = self._get_block_offset(current_offset)
+
+            # Calculate position within the block
             offset_in_block = current_offset - block_offset
+
+            # Determine how many bytes to process in this block:
+            # - Either the remaining bytes we need to process (length - bytes_processed)
+            # - Or the remaining bytes in this block (block_size - offset_in_block)
+            # Whichever is smaller
             chunk_size = min(length - bytes_processed, self.block_size - offset_in_block)
 
             yield block_offset, offset_in_block, chunk_size

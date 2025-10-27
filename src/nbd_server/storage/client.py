@@ -24,7 +24,8 @@ class ClientManager:
                 'mode': 'adaptive'
             },
             connect_timeout=5,
-            read_timeout=60
+            read_timeout=60,
+            max_pool_connections=s3_config.max_pool_connections
         )
 
         self._client_config = {
@@ -37,6 +38,7 @@ class ClientManager:
         logger.debug(
             f"ClientManager initialized: endpoint={s3_config.endpoint_url}, "
             f"region={s3_config.region}, bucket={s3_config.bucket}, "
+            f"max_pool={s3_config.max_pool_connections}, "
             f"retry=adaptive(5), timeout=5s/60s"
         )
 

@@ -10,3 +10,4 @@ class S3Config:
     secret_key: str
     bucket: str
     region: str
+    max_pool_connections: int = 10
