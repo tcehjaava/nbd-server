@@ -62,15 +62,11 @@ class NBDServer:
         )
 
         addr = server.sockets[0].getsockname() if server.sockets else (self.host, self.port)
-        logger.info(f"Async NBD Server listening on {addr[0]}:{addr[1]}")
-        logger.info(f"Server ID: {self.server_id}")
-        max_detection_time = self.tcp_keepalive_idle + (self.tcp_keepalive_interval * self.tcp_keepalive_count)
-        logger.info(
-            f"TCP keepalive enabled: idle={self.tcp_keepalive_idle}s, "
-            f"interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count} "
-            f"(max dead connection detection time: ~{max_detection_time}s)"
+        logger.info(f"NBD Server listening on {addr[0]}:{addr[1]} (ID: {self.server_id})")
+        logger.debug(
+            f"TCP keepalive: idle={self.tcp_keepalive_idle}s, "
+            f"interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}"
         )
-        logger.info("Ready to accept concurrent connections... (Press Ctrl+C to stop)")
 
         async with server:
             await server.serve_forever()
@@ -81,13 +77,13 @@ class NBDServer:
         """Handle a single async client connection through negotiation and transmission phases."""
         connection_id = str(uuid.uuid4())
         addr = writer.get_extra_info("peername")
-        logger.info(f"Connection {connection_id} from {addr}")
+        logger.info(f"New connection from {addr}")
 
         storage = None
         protocol_handler = NegotiationHandler(self.export_size)
 
         try:
-            self._enable_tcp_keepalive(writer, connection_id)
+            self._enable_tcp_keepalive(writer)
 
             await protocol_handler.handshake(writer)
             await protocol_handler.receive_client_flags(reader)
@@ -96,7 +92,7 @@ class NBDServer:
             if export_name is None:
                 return
 
-            logger.info(f"Creating storage for export '{export_name}' (connection={connection_id})")
+            logger.debug(f"Creating storage for export '{export_name}'")
             try:
                 storage = await S3Storage.create(
                     export_name=export_name,
@@ -106,31 +102,31 @@ class NBDServer:
                     server_id=self.server_id,
                 )
             except RuntimeError as e:
-                logger.error(f"Failed to create storage: {e}")
+                logger.error(f"Storage creation failed: {e}")
                 return
 
-            logger.info("Negotiation complete, entering transmission phase")
+            logger.info(f"Export '{export_name}' ready")
             command_handler = TransmissionHandler(storage)
             await command_handler.process_commands(reader, writer)
 
         except ConnectionError as e:
-            logger.error(f"Connection error: {e}")
+            logger.debug(f"Connection error: {e}")
         except ValueError as e:
             logger.error(f"Protocol error: {e}")
         except Exception as e:
-            logger.exception(f"Unexpected error handling connection: {e}")
+            logger.exception(f"Unexpected error: {e}")
         finally:
             if storage:
                 await storage.release()
             writer.close()
             await writer.wait_closed()
-            logger.info(f"Connection {connection_id} from {addr} closed")
+            logger.debug(f"Connection closed: {addr}")
 
-    def _enable_tcp_keepalive(self, writer: asyncio.StreamWriter, connection_id: str) -> None:
+    def _enable_tcp_keepalive(self, writer: asyncio.StreamWriter) -> None:
         """Enable TCP keepalive on the socket to detect dead connections."""
         sock = writer.get_extra_info("socket")
         if sock is None:
-            logger.warning(f"Connection {connection_id}: Cannot enable TCP keepalive (no socket)")
+            logger.debug("Cannot enable TCP keepalive (no socket)")
             return
 
         try:
@@ -146,25 +142,9 @@ class NBDServer:
                 sock.setsockopt(
                     socket.IPPROTO_TCP, socket.TCP_KEEPCNT, self.tcp_keepalive_count
                 )
-                logger.debug(
-                    f"Connection {connection_id}: TCP keepalive enabled "
-                    f"(idle={self.tcp_keepalive_idle}s, interval={self.tcp_keepalive_interval}s, "
-                    f"count={self.tcp_keepalive_count})"
-                )
             elif hasattr(socket, "TCP_KEEPALIVE"):
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, self.tcp_keepalive_idle)
-                logger.debug(
-                    f"Connection {connection_id}: TCP keepalive enabled "
-                    f"(macOS style, idle={self.tcp_keepalive_idle}s)"
-                )
-            else:
-                logger.warning(
-                    f"Connection {connection_id}: TCP keepalive enabled but platform-specific "
-                    f"settings not available (using OS defaults)"
-                )
 
         except OSError as e:
-            logger.warning(
-                f"Connection {connection_id}: Failed to enable TCP keepalive: {e}"
-            )
+            logger.debug(f"Failed to enable TCP keepalive: {e}")
 
