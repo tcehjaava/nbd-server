@@ -1,8 +1,4 @@
-import sys
 import unittest
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from helpers.s3_utils import cleanup_s3_async
 from nbd_server.models import S3Config
