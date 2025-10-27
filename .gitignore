@@ -84,3 +84,5 @@ s3-data/
 
 # Environment variables (keep .env.example)
 .env
+
+Claude.md
