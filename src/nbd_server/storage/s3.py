@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import AsyncGenerator, Optional
 
@@ -136,10 +137,15 @@ class S3Storage(StorageBackend):
     async def read(self, offset: int, length: int) -> bytes:
         """Read data from storage with shared lock for concurrent reads."""
         async with self.rwlock.reader:
-            result = bytearray()
-
+            blocks_to_read = []
             async for block_offset, offset_in_block, chunk_size in self._iter_blocks(offset, length):
-                block_data = await self._read_block(block_offset)
+                blocks_to_read.append((block_offset, offset_in_block, chunk_size))
+
+            tasks = [self._read_block(block_offset) for block_offset, _, _ in blocks_to_read]
+            block_data_list = await asyncio.gather(*tasks)
+
+            result = bytearray()
+            for (_, offset_in_block, chunk_size), block_data in zip(blocks_to_read, block_data_list):
                 result.extend(block_data[offset_in_block : offset_in_block + chunk_size])
 
             return bytes(result)
