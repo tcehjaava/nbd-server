@@ -21,7 +21,7 @@ NBD_INFO_EXPORT = 0x0000
 
 # Transmission Flags (for export)
 NBD_FLAG_HAS_FLAGS = 0x0001
-NBD_FLAG_SEND_FLUSH = 0x0002
+NBD_FLAG_SEND_FLUSH = 0x0004
 TRANSMISSION_FLAGS = NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH
 
 # NBD Commands (Client -> Server during transmission phase)
