@@ -1,8 +1,8 @@
 import asyncio
 import unittest
 
-from .nbd_client import NBDTestClient
-from .s3_utils import cleanup_s3_async
+from helpers.nbd_client import NBDTestClient
+from helpers.s3_utils import cleanup_s3_async
 from nbd_server.constants import parse_size
 from nbd_server.models import S3Config
 from nbd_server.server import NBDServer
