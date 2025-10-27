@@ -3,11 +3,10 @@ import sys
 import unittest
 from pathlib import Path
 
-from botocore.exceptions import ClientError
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from helpers.nbd_client import NBDTestClient
+from helpers.s3_utils import cleanup_s3_async
 from nbd_server.constants import parse_size
 from nbd_server.models import S3Config
 from nbd_server.server import NBDServer
@@ -25,28 +24,6 @@ def create_test_s3_config() -> S3Config:
 
 
 class TestNBDServer(unittest.IsolatedAsyncioTestCase):
-    async def _cleanup_s3(self) -> None:
-        async with self.client_manager.get_client() as s3:
-            try:
-                response = await s3.list_objects_v2(
-                    Bucket=self.s3_config.bucket, Prefix=f"blocks/{self.export_name}/"
-                )
-                if "Contents" in response:
-                    objects_to_delete = [{"Key": obj["Key"]} for obj in response["Contents"]]
-                    if objects_to_delete:
-                        await s3.delete_objects(
-                            Bucket=self.s3_config.bucket, Delete={"Objects": objects_to_delete}
-                        )
-
-                response = await s3.list_objects_v2(Bucket=self.s3_config.bucket, Prefix="locks/")
-                if "Contents" in response:
-                    objects_to_delete = [{"Key": obj["Key"]} for obj in response["Contents"]]
-                    if objects_to_delete:
-                        await s3.delete_objects(
-                            Bucket=self.s3_config.bucket, Delete={"Objects": objects_to_delete}
-                        )
-            except ClientError:
-                pass
 
     async def asyncSetUp(self):
         self.s3_config = create_test_s3_config()
@@ -74,7 +51,12 @@ class TestNBDServer(unittest.IsolatedAsyncioTestCase):
             except asyncio.CancelledError:
                 pass
 
-        await self._cleanup_s3()
+        await cleanup_s3_async(
+            self.client_manager,
+            self.s3_config,
+            export_name=self.export_name,
+            cleanup_locks=True,
+        )
 
     async def test_server_write_and_read_basic(self):
         client = NBDTestClient(host="localhost", port=self.server_port)

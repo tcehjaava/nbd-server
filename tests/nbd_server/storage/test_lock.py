@@ -1,9 +1,14 @@
 import asyncio
 import json
+import sys
 import unittest
+from pathlib import Path
 
 from botocore.exceptions import ClientError
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from helpers.s3_utils import cleanup_s3_async
 from nbd_server.models import S3Config
 from nbd_server.storage.client import ClientManager
 from nbd_server.storage.lock import LeaseLock
@@ -25,22 +30,11 @@ class TestLeaseLock(unittest.IsolatedAsyncioTestCase):
         self.s3_config = create_test_s3_config()
         self.client_manager = ClientManager(self.s3_config)
 
-        async with self.client_manager.get_client() as s3:
-            try:
-                response = await s3.list_objects_v2(
-                    Bucket=self.s3_config.bucket,
-                    Prefix="locks/"
-                )
-
-                if "Contents" in response:
-                    objects_to_delete = [{"Key": obj["Key"]} for obj in response["Contents"]]
-                    if objects_to_delete:
-                        await s3.delete_objects(
-                            Bucket=self.s3_config.bucket,
-                            Delete={"Objects": objects_to_delete}
-                        )
-            except ClientError:
-                pass
+        await cleanup_s3_async(
+            self.client_manager,
+            self.s3_config,
+            cleanup_locks=True,
+        )
 
     async def test_acquire_lock_first_time(self):
         export_name = "test-export-first-time"
