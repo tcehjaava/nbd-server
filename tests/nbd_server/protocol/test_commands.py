@@ -3,7 +3,7 @@ import socket
 import struct
 import unittest
 
-from helpers.s3_utils import cleanup_s3_async
+from ..s3_utils import cleanup_s3_async
 from nbd_server.constants import (
     NBD_CMD_DISC,
     NBD_CMD_FLUSH,
