@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
 
 from dotenv import load_dotenv
 
-from src.nbd_server.legacy import NBDServer, S3Storage
+from src.nbd_server.server import NBDServer
+from src.nbd_server.models import S3Config
 from src.nbd_server.constants import (
     DEFAULT_BLOCK_SIZE,
     DEFAULT_EXPORT_SIZE,
@@ -22,7 +24,7 @@ from src.nbd_server.constants import (
 )
 
 
-def main():
+async def main():
     load_dotenv()
 
     parser = argparse.ArgumentParser(
@@ -134,25 +136,24 @@ Environment Variables:
     logger.info(f"    S3 bucket: {args.s3_bucket}")
     logger.info(f"    S3 region: {args.s3_region}")
 
-    storage = S3Storage.create(
-        export_name=args.export_name,
+    s3_config = S3Config(
         endpoint_url=args.s3_endpoint,
         access_key=args.s3_access_key,
         secret_key=args.s3_secret_key,
         bucket=args.s3_bucket,
         region=args.s3_region,
-        block_size=block_size,
     )
 
     server = NBDServer(
-        storage=storage,
+        s3_config=s3_config,
+        block_size=block_size,
         host=args.host,
         port=args.port,
         export_size=export_size,
     )
 
-    server.run()
+    await server.run()
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
