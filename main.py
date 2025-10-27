@@ -33,25 +33,19 @@ async def main():
         epilog='''
 Examples:
   # Basic usage
-  python main.py --export-name my-disk
+  python main.py
 
   # With custom configuration
-  python main.py --export-name my-disk --s3-endpoint http://localhost:9000 --size 2GB
+  python main.py --s3-endpoint http://localhost:9000 --size 2GB
 
 Environment Variables:
   All arguments can be set via environment variables with NBD_ prefix:
-  NBD_HOST, NBD_PORT, NBD_EXPORT_NAME, NBD_SIZE,
+  NBD_HOST, NBD_PORT, NBD_SIZE,
   NBD_S3_ENDPOINT, NBD_S3_ACCESS_KEY, NBD_S3_SECRET_KEY, NBD_S3_BUCKET, NBD_S3_REGION,
   NBD_LOG_LEVEL
         '''
     )
 
-    parser.add_argument(
-        '--export-name',
-        default=os.getenv('NBD_EXPORT_NAME'),
-        required=not os.getenv('NBD_EXPORT_NAME'),
-        help='Export name (required if not set via NBD_EXPORT_NAME)'
-    )
 
     parser.add_argument(
         '--host',
@@ -129,7 +123,6 @@ Environment Variables:
     logger.info("Configuration:")
     logger.info(f"    Host: {args.host}")
     logger.info(f"    Port: {args.port}")
-    logger.info(f"    Export name: {args.export_name}")
     logger.info(f"    Export size: {export_size:,} bytes ({args.size})")
     logger.info(f"    Block size: {block_size:,} bytes ({DEFAULT_BLOCK_SIZE})")
     logger.info(f"    S3 endpoint: {args.s3_endpoint}")

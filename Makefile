@@ -1,10 +1,9 @@
-.PHONY: help venv install install-dev format lint type-check test test-cov test-clean clean docker-up docker-down run stop
+.PHONY: help venv install-local format lint type-check test test-cov test-clean clean docker-up docker-down run stop
 
 help:
 	@echo "Available commands:"
 	@echo "  make venv           - Create virtual environment if it doesn't exist"
-	@echo "  make install        - Install production dependencies"
-	@echo "  make install-dev    - Install development dependencies"
+	@echo "  make install-local  - Install dependencies and start MinIO"
 	@echo "  make format         - Format code with black and isort"
 	@echo "  make lint           - Lint code with ruff"
 	@echo "  make type-check     - Run mypy type checking"
@@ -26,11 +25,7 @@ venv:
 		echo "Virtual environment already exists"; \
 	fi
 
-install: venv
-	venv/bin/pip install -r requirements.txt
-	venv/bin/pip install -e .
-
-install-dev: venv
+install-local: venv docker-up
 	venv/bin/pip install -r requirements-dev.txt
 	venv/bin/pip install -e .
 
@@ -44,10 +39,10 @@ lint: venv
 type-check: venv
 	venv/bin/mypy src/
 
-test: install-dev docker-up
+test: install-local
 	venv/bin/pytest
 
-test-cov: install-dev docker-up
+test-cov: install-local
 	venv/bin/pytest --cov=src --cov-report=html
 	@echo "Coverage report generated in htmlcov/index.html"
 
@@ -73,8 +68,8 @@ docker-up:
 docker-down:
 	docker-compose down
 
-run: venv docker-up
-	venv/bin/python main.py --export-name default-disk
+run: install-local
+	venv/bin/python main.py
 
 stop:
 	@PID=$$(lsof -t -i :10809 2>/dev/null || echo ""); \
