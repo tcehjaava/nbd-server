@@ -200,23 +200,44 @@ class S3Storage(StorageBackend):
             num_blocks = len(self.dirty_blocks)
             logger.info(f"Flushing {num_blocks} dirty blocks to S3")
 
+            async def upload_block(s3, block_offset: int, block_data: bytes) -> tuple[int, str, Exception | None]:
+                key = self._get_block_key(block_offset)
+                try:
+                    await s3.put_object(
+                        Bucket=self.bucket,
+                        Key=key,
+                        Body=block_data,
+                    )
+                    logger.debug(f"Uploaded block to S3: {key} ({len(block_data)} bytes)")
+                    return block_offset, key, None
+                except ClientError as e:
+                    logger.error(f"Failed to upload block {key}: {e}")
+                    return block_offset, key, e
+
             async with self.s3_manager.get_client() as s3:
-                for block_offset in list(self.dirty_blocks.keys()):
-                    block_data = self.dirty_blocks[block_offset]
-                    key = self._get_block_key(block_offset)
+                tasks = [
+                    upload_block(s3, block_offset, block_data)
+                    for block_offset, block_data in self.dirty_blocks.items()
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                    try:
-                        await s3.put_object(
-                            Bucket=self.bucket,
-                            Key=key,
-                            Body=block_data,
-                        )
-                        logger.debug(f"Uploaded block to S3: {key} ({len(block_data)} bytes)")
-                        del self.dirty_blocks[block_offset]
+                failed_blocks = []
+                for result in results:
+                    if isinstance(result, Exception):
+                        logger.error(f"Unexpected error during flush: {result}")
+                        failed_blocks.append(("unknown", result))
+                    else:
+                        block_offset, key, error = result
+                        if error is None:
+                            del self.dirty_blocks[block_offset]
+                        else:
+                            failed_blocks.append((key, error))
 
-                    except ClientError as e:
-                        logger.error(f"Failed to upload block {key}: {e}")
-                        raise
+                if failed_blocks:
+                    error_summary = ", ".join([f"{key}: {err}" for key, err in failed_blocks])
+                    raise RuntimeError(
+                        f"Failed to flush {len(failed_blocks)} out of {num_blocks} blocks: {error_summary}"
+                    )
 
             logger.info(f"Successfully flushed {num_blocks} blocks to S3")
 
