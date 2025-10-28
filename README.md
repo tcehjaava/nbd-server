@@ -2,6 +2,47 @@
 
 Network Block Device (NBD) server implementation with S3-compatible storage backend.
 
+## Architecture Overview
+
+```
+┌─────────────┐                    ┌──────────────────────────────────┐
+│ NBD Client  │◄──── TCP/NBD ─────►│      NBD Server                  │
+│ (nbd-client)│    Protocol        │                                  │
+└─────────────┘                    │  ┌────────────────────────────┐  │
+                                   │  │   Protocol Handler         │  │
+                                   │  │   (Handshake, Read,        │  │
+                                   │  │    Write, Flush)           │  │
+                                   │  └──────────┬─────────────────┘  │
+                                   │             │                    │
+                                   │  ┌──────────▼─────────────────┐  │
+                                   │  │   In-Memory Cache          │  │
+                                   │  │   (Dirty Blocks)           │  │
+                                   │  └──────────┬─────────────────┘  │
+                                   │             │                    │
+                                   │  ┌──────────▼─────────────────┐  │
+                                   │  │   Storage Backend          │  │
+                                   │  │   (S3 with 128KB blocks)   │  │
+                                   │  └────────────────────────────┘  │
+                                   │                                  │
+                                   │  ┌────────────────────────────┐  │
+                                   │  │   Lock Manager             │  │
+                                   │  │   (Lease-based, S3-backed) │  │
+                                   │  └────────────────────────────┘  │
+                                   └──────────────────────────────────┘
+                                                   │
+                                                   ▼
+                                   ┌──────────────────────────────────┐
+                                   │   S3-Compatible Storage          │
+                                   │   (MinIO / AWS S3)               │
+                                   └──────────────────────────────────┘
+```
+
+**Data Flow:**
+1. **Handshake**: Client connects, negotiates export name and transmission flags
+2. **Read**: Check cache → Fetch from S3 if needed → Return data
+3. **Write**: Buffer in cache → Return immediately (async)
+4. **Flush**: Upload all dirty blocks to S3 in parallel → Confirm durability
+
 ## Key Design Decisions
 
 - **NBD Protocol Implementation**: Implemented the fixed newstyle handshake which supports arbitrary export names. Each export name gets its own independent S3 storage namespace, allowing multiple isolated block devices on the same server.
@@ -13,8 +54,6 @@ Network Block Device (NBD) server implementation with S3-compatible storage back
 - **Distributed Locking with S3**: Implemented lease-based locks stored in S3 to prevent multiple connections from writing to the same export simultaneously. Each lock has a 30-second lease duration with automatic 15-second renewal via background heartbeat tasks to maintain ownership.
 
 - **Lock Acquisition with Conditional Writes**: Uses S3's conditional write operations (`IfNoneMatch` for creation, `IfMatch` for updates) combined with S3's strong consistency model. This guarantees that when two clients try to acquire the same export lock simultaneously, only one will succeed.
-
-- **Concurrent Read Operations**: Implemented read-write locks (RWLock) at the storage layer, allowing multiple READ operations to execute concurrently while WRITE operations get exclusive access. This enables atomic read-modify-write sequences without data races.
 
 - **Parallel S3 Uploads**: During FLUSH operations, dirty blocks are uploaded to S3 in parallel using asyncio.gather with a pool of 10 concurrent connections. This provides approximately 128MB/s theoretical throughput (10 connections × 128KB blocks × 100 requests/sec).
 

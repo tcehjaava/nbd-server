@@ -4,6 +4,7 @@ import socket
 import uuid
 
 from .storage.s3 import S3Storage
+from .storage.client import ClientManager
 from .protocol.commands import TransmissionHandler
 from .models import S3Config
 from .protocol.negotiation import NegotiationHandler
@@ -53,6 +54,10 @@ class NBDServer:
         self.tcp_keepalive_interval = tcp_keepalive_interval
         self.tcp_keepalive_count = tcp_keepalive_count
 
+        # Create shared S3 client manager for connection pool reuse across all connections
+        self.shared_client_manager = ClientManager(s3_config)
+        logger.debug("Shared ClientManager created for connection pool reuse")
+
     async def run(self) -> None:
         """Start the async NBD server and handle concurrent connections."""
         server = await asyncio.start_server(
@@ -68,8 +73,14 @@ class NBDServer:
             f"interval={self.tcp_keepalive_interval}s, count={self.tcp_keepalive_count}"
         )
 
-        async with server:
-            await server.serve_forever()
+        try:
+            async with server:
+                await server.serve_forever()
+        finally:
+            # Cleanup shared S3 client manager on server shutdown
+            logger.info("Shutting down server, cleaning up shared resources...")
+            await self.shared_client_manager.close()
+            logger.info("Server shutdown complete")
 
     async def _handle_connection(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -100,6 +111,7 @@ class NBDServer:
                     block_size=self.block_size,
                     connection_id=connection_id,
                     server_id=self.server_id,
+                    s3_client_manager=self.shared_client_manager,
                 )
             except RuntimeError as e:
                 logger.error(f"Storage creation failed: {e}")
